@@ -1,23 +1,17 @@
-//! The saved city list on disk. It is nothing but an ordered set of
-//! geonameids, so plain text — one id per line — says everything a format
-//! would, and stays readable and hand-editable. Anything the file cannot
-//! offer, from a missing config dir to a garbled line, degrades to fewer
-//! cities rather than an error: a clock is not worth refusing to start over.
-//! The one thing it must not do is mistake a file it could not read for an
-//! empty one and write that back over it.
+//! The saved city list on disk, one geonameid per line so it stays
+//! hand-editable. Problems degrade to fewer cities rather than an error, but a
+//! file that could not be read must never be mistaken for an empty one and
+//! written over.
 
 use std::env;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-/// The comment the file opens with, so a curious reader knows what it holds.
 const HEADER: &str = "# elsewhere saved cities, one geonameid per line, in list order";
 
-/// Where the list lives, given the environment. Takes its variables as
-/// arguments so it can be tested without touching the process environment.
-/// `None` means there is nowhere sensible to write, and persistence is
-/// silently skipped.
+/// Takes the variables as arguments so tests need not touch the process
+/// environment. `None` silently skips persistence.
 fn dir(xdg: Option<&str>, home: Option<&str>) -> Option<PathBuf> {
     // An empty variable counts as unset, per the XDG spec.
     let xdg = xdg.filter(|path| !path.is_empty());
@@ -42,8 +36,7 @@ fn path() -> Option<PathBuf> {
     dir.map(|dir| dir.join("saved"))
 }
 
-/// The geonameids of `text`, in order. Blank lines, comments and anything
-/// unparseable are dropped, as are repeats of an id already seen.
+/// Drops blanks, comments, garbage and repeats.
 fn parse(text: &str) -> Vec<u32> {
     let mut saved: Vec<u32> = Vec::new();
     for line in text.lines() {
@@ -70,9 +63,8 @@ fn render(saved: &[u32]) -> String {
     out
 }
 
-/// The list in the file at `path`. Only a file that is not there counts as
-/// empty; one that is there but cannot be read, whether for permissions or for
-/// not being text, is reported and comes back `None`.
+/// Only a missing file counts as empty; one that exists but cannot be read
+/// comes back `None`.
 fn read(path: &Path) -> Option<Vec<u32>> {
     match fs::read_to_string(path) {
         Ok(text) => Some(parse(&text)),
@@ -84,8 +76,8 @@ fn read(path: &Path) -> Option<Vec<u32>> {
     }
 }
 
-/// The saved list, or `None` when the file could not be read. Then the session
-/// must not save: it would replace whatever the file holds with its own list.
+/// `None` when the file could not be read, in which case the session must not
+/// save over it.
 pub fn load() -> Option<Vec<u32>> {
     match path() {
         Some(path) => read(&path),
@@ -93,10 +85,9 @@ pub fn load() -> Option<Vec<u32>> {
     }
 }
 
-/// Rewrites the whole list, through a temporary file renamed into place so an
-/// interrupted write cannot leave half a list behind. A failure is reported
-/// and shrugged off: losing the order across restarts must never break the
-/// running session.
+/// Writes through a temporary file renamed into place, so an interrupted write
+/// cannot leave half a list. Failures are only reported: they must not break
+/// the running session.
 pub fn save(saved: &[u32]) {
     let Some(path) = path() else {
         return;
@@ -113,10 +104,8 @@ pub fn save(saved: &[u32]) {
     }
 }
 
-/// Moves `dragged` to sit just before `before`, or to the end when there is no
-/// row to sit before. Returns whether the order actually changed, so a drop
-/// that lands where the row already was costs nothing. An id the list does not
-/// hold, or a row dropped on itself, leaves it untouched.
+/// Moves `dragged` before `before`, or to the end. Returns whether the order
+/// changed, so a no-op drop costs nothing. Unknown ids change nothing.
 pub fn reorder(saved: &mut Vec<u32>, dragged: u32, before: Option<u32>) -> bool {
     if before == Some(dragged) {
         return false;
@@ -142,9 +131,8 @@ pub fn reorder(saved: &mut Vec<u32>, dragged: u32, before: Option<u32>) -> bool 
     true
 }
 
-/// The given cities, westmost first. The sort is stable, so cities sharing a
-/// longitude keep the order they came in; a longitude that is somehow not a
-/// number sorts as equal rather than panicking.
+/// Westmost first. Stable, so shared longitudes keep their order; a NaN sorts
+/// as equal rather than panicking.
 pub fn westward(mut cities: Vec<(u32, f64)>) -> Vec<u32> {
     cities.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
     cities.into_iter().map(|(geonameid, _)| geonameid).collect()

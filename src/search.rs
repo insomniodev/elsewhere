@@ -1,6 +1,5 @@
-//! Searching the city list. The dataset is small enough (~64k rows) that a
-//! scored linear scan per keystroke is fine; the only thing worth precomputing
-//! is the lowercased text, so matching itself allocates nothing.
+//! At ~64k cities a scored linear scan per keystroke is fine. Only the
+//! lowercased text is precomputed, so matching allocates nothing.
 
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
@@ -9,18 +8,16 @@ use crate::cities::City;
 
 pub struct SearchIndex {
     entries: Vec<Entry>,
-    /// Where each geonameid sits in `entries`, since that is the key the saved
-    /// list keeps.
+    /// The saved list keys cities by geonameid.
     by_geonameid: HashMap<u32, usize>,
-    /// Names carried by more than one city, which need an admin1 to tell apart.
+    /// Names shared by several cities, which need an admin1 to tell apart.
     ambiguous: HashSet<String>,
 }
 
 struct Entry {
     city: City,
-    /// The lowercased asciiname, always searched.
     ascii: String,
-    /// The lowercased name, when lowercasing leaves it different from `ascii`.
+    /// `None` when it would equal `ascii`.
     name: Option<String>,
 }
 
@@ -69,9 +66,8 @@ impl SearchIndex {
         Some(&self.entries[at].city)
     }
 
-    /// The best `limit` cities for `query`, best first. Matching is
-    /// case-insensitive and runs against both the local and the unaccented
-    /// name, so "sant julia" and "julià" both find Sant Julià de Lòria.
+    /// Case-insensitive, against both the local and the unaccented name, so
+    /// "sant julia" and "julià" both find Sant Julià de Lòria.
     pub fn search(&self, query: &str, limit: usize) -> Vec<&City> {
         let query = query.trim().to_lowercase();
         if query.is_empty() || limit == 0 {
@@ -88,8 +84,7 @@ impl SearchIndex {
         hits.into_iter().map(|(_, city)| city).collect()
     }
 
-    /// How the picker lists a city: "Name, Country", widened to
-    /// "Name, Admin1, Country" when the name alone would be ambiguous.
+    /// "Name, Country", or "Name, Admin1, Country" when the name is ambiguous.
     pub fn label(&self, city: &City) -> String {
         if self.ambiguous.contains(&city.name) && !city.admin1.is_empty() {
             format!("{}, {}, {}", city.name, city.admin1, city.country)
@@ -109,14 +104,13 @@ impl Entry {
     }
 }
 
-/// How good a match is, lower being better.
+/// Lower is better.
 type Rank = u8;
 
-/// The whole name starts with the query.
 const PREFIX: Rank = 0;
-/// A later word of the name starts with it.
+/// A later word starts with the query.
 const WORD_PREFIX: Rank = 1;
-/// It appears somewhere in the middle of a word.
+/// Mid-word.
 const SUBSTRING: Rank = 2;
 
 fn rank(haystack: &str, query: &str) -> Option<Rank> {
@@ -135,7 +129,7 @@ fn rank(haystack: &str, query: &str) -> Option<Rank> {
     best
 }
 
-/// Whether byte offset `at` begins a word, i.e. follows a space or punctuation.
+/// `at` is a byte offset; a word begins after any non-alphanumeric char.
 fn starts_word(haystack: &str, at: usize) -> bool {
     haystack[..at]
         .chars()

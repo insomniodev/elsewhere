@@ -1,6 +1,4 @@
-//! Turning an instant into what a saved city shows: the local time somewhere
-//! else, a hint when it is not the same day there as it is here, and the
-//! grid's hour labels and zone names.
+//! Turning an instant into what a saved city shows, and the grid's labels.
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -9,7 +7,6 @@ use jiff::civil::Date;
 use jiff::tz::{Offset, TimeZone};
 use jiff::{Unit, Zoned};
 
-/// How a time is written: "21:34", or "9:34 pm".
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Format {
     #[default]
@@ -18,8 +15,8 @@ pub enum Format {
 }
 
 impl Format {
-    /// The most glyphs a reading takes in this format: "21:34" against
-    /// "12:34 pm". A column sized to it never reflows as the digits change.
+    /// The widest reading, so a column sized to it never reflows as the
+    /// digits change.
     pub fn glyphs(self) -> usize {
         match self {
             Format::TwentyFour => 5,
@@ -28,24 +25,21 @@ impl Format {
     }
 }
 
-/// What a saved row shows for one city.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Reading {
-    /// The local time, written in the requested `Format`.
     pub time: String,
-    /// How the local date differs from home's, when it does.
+    /// Set when the date there differs from home's.
     pub day: Option<String>,
 }
 
-/// Shown when the city's zone is missing from this machine's tzdb, so there is
-/// no time to show but the city still deserves its row.
+/// For a city whose zone this machine's tzdb lacks; it still keeps its row.
 pub const UNKNOWN: &str = "–:–";
 
-/// A small pad so a timer firing a hair early still lands inside the next
-/// minute, instead of waking up again a few milliseconds later.
+/// So a timer firing a hair early still lands in the next minute rather than
+/// waking again milliseconds later.
 const PAD: Duration = Duration::from_millis(50);
 
-/// The reading for `zone` at the instant `now`, whose own zone is home.
+/// `now`'s own zone is home.
 pub fn reading(now: &Zoned, zone: &TimeZone, format: Format) -> Reading {
     let there = now.with_time_zone(zone.clone());
     let (hour, minute) = (there.hour(), there.minute());
@@ -62,7 +56,7 @@ pub fn reading(now: &Zoned, zone: &TimeZone, format: Format) -> Reading {
     }
 }
 
-/// A 24-hour hour as the 12-hour clock writes it: `(9, "pm")` for 21.
+/// `(9, "pm")` for 21.
 fn twelve(hour: i8) -> (i8, &'static str) {
     let half = if hour < 12 { "am" } else { "pm" };
     let hour = match hour % 12 {
@@ -72,9 +66,8 @@ fn twelve(hour: i8) -> (i8, &'static str) {
     (hour, half)
 }
 
-/// An hour line's label, as a calendar's time gutter writes it: "9 AM" or
-/// "09:00", with the minutes kept in 12-hour time only where a zone is off
-/// the hour ("5:30 AM").
+/// "9 AM" or "09:00", as a calendar gutter writes it. 12-hour labels show
+/// minutes only for zones off the hour ("5:30 AM").
 pub fn hour_label(hour: i8, minute: i8, format: Format) -> String {
     match format {
         Format::TwentyFour => format!("{hour:02}:{minute:02}"),
@@ -123,7 +116,6 @@ pub fn zone_detail(zone: &TimeZone, at: &Zoned) -> String {
     }
 }
 
-/// How to describe `there` relative to `here`, or `None` on the same date.
 fn day(here: Date, there: Date) -> Option<String> {
     let days = there.since((Unit::Day, here)).ok()?.get_days();
     match days {
@@ -134,23 +126,20 @@ fn day(here: Date, there: Date) -> Option<String> {
     }
 }
 
-/// The instant at which `zone`'s wall clock reads `text` — "HH:MM" or
-/// "h:mm am", today over there — expressed in home's zone so day hints stay
-/// relative to home. `None` when the text does not read as such a time.
-/// Either way of writing a time is accepted whatever the display format, so
-/// what was typed does not have to match what the row showed.
+/// When `zone`'s wall clock reads `text` today over there, held in home's
+/// zone so day hints stay relative to home. Both "HH:MM" and "h:mm am" are
+/// accepted whatever the display format, so typing need not match the row.
 pub fn pin(text: &str, zone: &TimeZone, now: &Zoned) -> Option<Zoned> {
     let (hour, minute) = wall(text)?;
     let date = now.with_time_zone(zone.clone()).date();
-    // A time skipped or repeated by a DST change resolves to jiff's compatible
+    // A time a DST change skips or repeats resolves to jiff's compatible
     // choice rather than failing.
     let there = date.at(hour, minute, 0, 0).to_zoned(zone.clone()).ok()?;
     Some(there.with_time_zone(now.time_zone().clone()))
 }
 
-/// The hour and minute `text` names, as a 24-hour clock. A trailing "am" or
-/// "pm", in either case, with or without a space before it, makes the hour a
-/// 12-hour one; without it the hour is taken as written.
+/// As a 24-hour clock. A trailing "am" or "pm", in any case and with or
+/// without a space, makes the hour a 12-hour one.
 fn wall(text: &str) -> Option<(i8, i8)> {
     let text = text.trim().to_ascii_lowercase();
     let (text, half) = match text.strip_suffix("am") {
@@ -174,7 +163,6 @@ fn wall(text: &str) -> Option<(i8, i8)> {
     Some((hour, minute))
 }
 
-/// How long to wait before the displayed minute changes.
 pub fn until_next_minute(now: &Zoned) -> Duration {
     // A leap second reads as :60, which is still inside the minute.
     let second = now.second().clamp(0, 59) as u64;
@@ -183,9 +171,8 @@ pub fn until_next_minute(now: &Zoned) -> Duration {
     Duration::new(59 - second, 1_000_000_000 - nanosecond) + PAD
 }
 
-/// The zones looked up so far, each resolved against the tzdb once. A zone this
-/// machine's tzdb does not know stays `None` rather than being retried every
-/// minute.
+/// A tzdb lookup cache. A zone this machine does not know is cached as `None`
+/// rather than retried every minute.
 #[derive(Default)]
 pub struct Zones(HashMap<String, Option<TimeZone>>);
 
@@ -194,8 +181,6 @@ impl Zones {
         Self::default()
     }
 
-    /// The zone, looked up in the tzdb on first sight and answered from the
-    /// cache after that — a failed lookup is remembered too.
     pub fn resolve(&mut self, timezone: &str) -> Option<&TimeZone> {
         if !self.0.contains_key(timezone) {
             self.0
@@ -204,7 +189,7 @@ impl Zones {
         self.get(timezone)
     }
 
-    /// The zone, if a `resolve` has succeeded for it before.
+    /// Only answers for zones already `resolve`d.
     pub fn get(&self, timezone: &str) -> Option<&TimeZone> {
         self.0.get(timezone).and_then(|zone| zone.as_ref())
     }

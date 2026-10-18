@@ -1,6 +1,5 @@
-//! The icons the window draws, baked into the binary. gpui looks an `svg()`
-//! up by path through the application's `AssetSource`; this one knows the
-//! handful under `assets/` and nothing else.
+//! The icons, baked into the binary. gpui resolves an `svg()` path through
+//! the app's `AssetSource`.
 
 use std::borrow::Cow;
 

@@ -1,41 +1,36 @@
-//! Where the sun stands over the earth, and how the world's dark half lands on
-//! a flat map. Degrees in and out, no gpui, so the arithmetic can be tested on
-//! its own.
+//! The sun's position and the night side on a flat map. Degrees in and out,
+//! kept gpui-free so it can be tested.
 
 use jiff::Zoned;
 
-/// A place on the globe: degrees east of Greenwich, degrees north of the
-/// equator, both negative the other way.
+/// Degrees east and north, negative west and south.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LonLat {
     pub lon: f64,
     pub lat: f64,
 }
 
-/// The map is cropped to this band: an equirectangular whole earth is mostly
-/// empty ice at both ends, and the crop buys height for everywhere else.
+/// The map's crop: a whole equirectangular earth is mostly ice at both ends,
+/// and cutting it buys height for everywhere else.
 pub const NORTH: f64 = 84.0;
 pub const SOUTH: f64 = -56.0;
 
-/// Width over height of the cropped map.
 pub fn aspect() -> f64 {
     360.0 / (NORTH - SOUTH)
 }
 
-/// Equirectangular, cropped to `SOUTH..NORTH`: `(x, y)` as fractions of the
-/// map's width and height, y growing downward. Latitude outside the crop
-/// clamps to the edge it left through.
+/// `(x, y)` as fractions of the cropped map, y down. Latitudes outside the
+/// crop clamp to its edge.
 pub fn project(p: LonLat) -> (f64, f64) {
     let x = (p.lon + 180.0) / 360.0;
     let y = (NORTH - p.lat) / (NORTH - SOUTH);
     (x, y.clamp(0.0, 1.0))
 }
 
-/// Where the sun is directly overhead at `at`.
+/// Where the sun is directly overhead.
 ///
 /// Meeus, *Astronomical Algorithms* ch. 25 (low-precision solar position) and
-/// eq. 28.3 (the equation of time), which is good to about an arcminute — far
-/// finer than a pixel on any map this draws.
+/// eq. 28.3 (the equation of time): about an arcminute, far below a pixel.
 pub fn subsolar(at: &Zoned) -> LonLat {
     let timestamp = at.timestamp();
     let unix = timestamp.as_second() as f64 + f64::from(timestamp.subsec_nanosecond()) / 1e9;
@@ -49,9 +44,7 @@ pub fn subsolar(at: &Zoned) -> LonLat {
         + (0.019993 - t * 0.000101) * (2.0 * mean_anomaly).sin()
         + 0.000289 * (3.0 * mean_anomaly).sin();
 
-    // The longitude of the moon's ascending node, which carries the largest
-    // term of the nutation the apparent longitude and obliquity are corrected
-    // for.
+    // The moon's ascending node, the largest term of the nutation correction.
     let node = (125.04 - 1934.136 * t).to_radians();
     let apparent_longitude =
         (mean_longitude + centre - 0.00569 - 0.00478 * node.sin()).to_radians();
@@ -71,8 +64,7 @@ pub fn subsolar(at: &Zoned) -> LonLat {
         - 1.25 * eccentricity * eccentricity * (2.0 * mean_anomaly).sin();
     let minutes = equation_of_time.to_degrees() * 4.0;
 
-    // The +0.5 puts the day's fraction at midnight rather than noon, where the
-    // Julian day starts.
+    // Julian days start at noon; the +0.5 moves that to midnight.
     let ut_hours = (julian_day + 0.5).rem_euclid(1.0) * 24.0;
     let lon = -(15.0 * (ut_hours - 12.0) + minutes / 4.0);
 
@@ -82,9 +74,8 @@ pub fn subsolar(at: &Zoned) -> LonLat {
     }
 }
 
-/// The dark half of the world as a closed polygon: the terminator sampled every
-/// `step_deg` of longitude from -180 to 180 inclusive, then closed through the
-/// pole that is in darkness. The last point is not a repeat of the first.
+/// The terminator sampled every `step_deg` from -180 to 180 inclusive, closed
+/// through the dark pole. The last point does not repeat the first.
 pub fn night(sun: LonLat, step_deg: f64) -> Vec<LonLat> {
     assert!(
         step_deg > 0.0,
@@ -118,17 +109,16 @@ pub fn night(sun: LonLat, step_deg: f64) -> Vec<LonLat> {
     points
 }
 
-/// The latitude at which the sun sits on the horizon at `lon`: the solution of
-/// sin(altitude) = sin φ sin δ + cos φ cos δ cos H = 0 for the hour angle
-/// H = lon - sun.lon.
+/// The latitude where the sun is on the horizon at `lon`: solves
+/// sin φ sin δ + cos φ cos δ cos H = 0 for H = lon - sun.lon.
 fn terminator(lon: f64, sun: LonLat) -> f64 {
     let hour_angle = (lon - sun.lon).to_radians();
     let declination = sun.lat.to_radians();
     let lat = (-hour_angle.cos() * declination.cos())
         .atan2(declination.sin())
         .to_degrees();
-    // atan2 answers over a full turn; the two solutions half a turn apart are
-    // the same great circle, and only one of them reads as a latitude.
+    // atan2 spans a full turn; of the two solutions half a turn apart, only
+    // one is a latitude.
     if lat > 90.0 {
         lat - 180.0
     } else if lat < -90.0 {

@@ -1,14 +1,12 @@
-//! The home day laid out as hour rows — gpui-free so the arithmetic can be
-//! tested on its own.
+//! The home day as hour rows, kept gpui-free so it can be tested.
 
 use jiff::{Span, Zoned};
 
-/// The home day `now` falls in, as hour-long rows from its midnight: 24 on
-/// most days, 23 or 25 on the days the clocks change, because rows add whole
-/// hours in absolute time.
+/// Rows add whole hours in absolute time, so a day the clocks change has 23
+/// or 25 of them.
 pub struct Day {
     start: Zoned,
-    /// How long the day really is, from this midnight to the next.
+    /// From this midnight to the next, which is not always 24 hours.
     seconds: i64,
 }
 
@@ -23,21 +21,19 @@ impl Day {
         Day { start, seconds }
     }
 
-    /// How many rows the day takes: its hours, rounded up so a day that
-    /// changes by half an hour keeps its last partial hour.
+    /// Rounded up, so a day that changes by half an hour keeps its last
+    /// partial hour.
     pub fn rows(&self) -> usize {
         (self.seconds as usize).div_ceil(3600)
     }
 
-    /// `start + i` hours.
     pub fn row(&self, i: usize) -> Zoned {
         self.start
             .checked_add(Span::new().hours(i as i64))
             .expect("a day's hours past midnight never overflow a zone")
     }
 
-    /// The row whose hour holds `at`, comparing instants so a DST day still
-    /// answers honestly.
+    /// Compares instants rather than wall times, so DST days answer right.
     pub fn index(&self, at: &Zoned) -> Option<usize> {
         let elapsed = at
             .timestamp()

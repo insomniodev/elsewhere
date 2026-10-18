@@ -1,5 +1,4 @@
-// Release builds on Windows open no console window beside the app; debug
-// builds keep it for panics and logs.
+// No console window on Windows; debug builds keep it for panics and logs.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use gpui::{
@@ -37,27 +36,25 @@ fn main() {
                 KeyBinding::new("alt-up", app::Earlier, Some("Elsewhere")),
             ]);
 
-            // A tall shape, as the list it opens on is: ten rows or so, and a
-            // map that scrolls sideways rather than shrinking to fit. Kept
-            // under 600 so it still fits a 1200-pixel display at 2x.
+            // Tall, to suit the list; the map scrolls sideways instead. Under
+            // 600 so it fits a 1200-pixel display at 2x.
             let bounds = Bounds::centered(None, size(px(400.), px(560.)), cx);
             cx.open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
-                    // Narrower than this and a row cannot hold a name and a
-                    // time; shorter and the search has no list under it.
+                    // Narrower and a row cannot hold a name and a time;
+                    // shorter and the search has no room for results.
                     window_min_size: Some(size(px(320.), px(360.))),
                     titlebar: Some(TitlebarOptions {
                         title: Some("elsewhere".into()),
-                        // Windows: the system's caption goes, its frame stays,
-                        // with the shadow, resize borders and snapping. macOS:
-                        // the caption goes, the traffic lights stay. Linux goes
-                        // by the decorations below.
+                        // Drops the caption but keeps the system frame on
+                        // Windows (shadow, resizing, snapping) and the traffic
+                        // lights on macOS. Linux goes by the decorations below.
                         appears_transparent: true,
                         traffic_light_position: Some(app::titlebar::MAC_TRAFFIC_LIGHTS),
                     }),
-                    // Linux: the window draws its own title bar and frame,
-                    // if the compositor lets it.
+                    // Linux: the app draws its own title bar and frame, if
+                    // the compositor allows.
                     window_decorations: Some(WindowDecorations::Client),
                     ..Default::default()
                 },
