@@ -8,10 +8,10 @@ use gpui::{
     Axis, Bounds, Context, Path, PathBuilder, Pixels, Point, ScrollDelta, ScrollWheelEvent, Size,
     TextRun, Window, canvas, div, fill, point, prelude::*, px, rgb, rgba, size,
 };
-use jiff::{RoundMode, Span, Unit, Zoned, ZonedRound};
+use jiff::Zoned;
 
+use super::Elsewhere;
 use super::scrollbar::scrollbar;
-use super::{Elsewhere, Pin};
 use crate::clock;
 use crate::geo::{self, LonLat};
 use crate::theme;
@@ -41,8 +41,6 @@ const RAY_FROM: f32 = 4.0;
 const RAY_TO: f32 = 6.5;
 const RAY_WIDTH: Pixels = px(1.);
 
-/// How far one wheel notch moves the shown instant.
-const NOTCH_MINUTES: i64 = 15;
 /// What counts as a notch when the wheel reports exact pixels, as a trackpad
 /// does. Roughly the distance a mouse wheel's click carries.
 const NOTCH_PIXELS: f32 = 40.0;
@@ -157,21 +155,9 @@ impl Elsewhere {
             return;
         }
 
-        // A scrub has no row behind it, so it keeps whatever anchor a pin
-        // already carries and otherwise takes none.
-        let anchor = self.pinned.as_ref().and_then(|pin| pin.anchor);
-        let from = match &self.pinned {
-            Some(pin) => pin.at.clone(),
-            None => quarter_hour(&Zoned::now()),
-        };
         // Scrolling down pushes the content up, which the wheel reports as a
         // negative delta; that is the gesture that should move time forward.
-        let Ok(at) = from.checked_add(Span::new().minutes(-(notches as i64) * NOTCH_MINUTES))
-        else {
-            return;
-        };
-        self.pinned = Some(Pin { anchor, at });
-        cx.notify();
+        self.nudge(-(notches as i64), cx);
     }
 
     fn render_world(&self, now: &Zoned) -> impl IntoElement + use<> {
@@ -324,19 +310,6 @@ pub(super) fn fit(area: Size<Pixels>) -> Bounds<Pixels> {
         point(((area.width - width) / 2.).max(px(0.)), px(0.)),
         size(width, area.height),
     )
-}
-
-/// `at` with its seconds and any odd minutes dropped, so a scrub that starts
-/// from the real clock lands on a round quarter rather than carrying the
-/// current second along forever.
-fn quarter_hour(at: &Zoned) -> Zoned {
-    at.round(
-        ZonedRound::new()
-            .smallest(Unit::Minute)
-            .increment(NOTCH_MINUTES)
-            .mode(RoundMode::Trunc),
-    )
-    .expect("a quarter hour is a valid rounding increment")
 }
 
 /// A closed filled path through `points`, or `None` for a run too short to

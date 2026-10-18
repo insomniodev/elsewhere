@@ -29,6 +29,8 @@ fn main() {
                 KeyBinding::new("up", app::search::MoveUp, Some("SearchPicker")),
                 KeyBinding::new("down", app::search::MoveDown, Some("SearchPicker")),
                 KeyBinding::new("escape", app::Unpin, Some("Elsewhere")),
+                KeyBinding::new("alt-down", app::Later, Some("Elsewhere")),
+                KeyBinding::new("alt-up", app::Earlier, Some("Elsewhere")),
             ]);
 
             // A tall shape, as the list it opens on is: ten rows or so, and a

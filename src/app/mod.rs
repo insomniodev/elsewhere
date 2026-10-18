@@ -5,7 +5,7 @@ use gpui::{
     Axis, Context, Entity, ScrollHandle, SharedString, Task, Window, actions, div, prelude::*, px,
     rgb,
 };
-use jiff::Zoned;
+use jiff::{RoundMode, Span, Unit, Zoned, ZonedRound};
 
 mod drag;
 mod footer;
@@ -35,8 +35,13 @@ use search::{SearchEvent, SearchPicker};
 actions!(pin_editor, [Commit, Cancel]);
 
 // Escape from anywhere in the window: back to the live clock. The search
-// picker lets it through only when it has nothing of its own to clear.
-actions!(elsewhere, [Unpin]);
+// picker lets it through only when it has nothing of its own to clear. Later
+// and Earlier step the shown instant from anywhere too, as the map's wheel does.
+actions!(elsewhere, [Unpin, Later, Earlier]);
+
+/// How far one step moves the shown instant: a wheel notch over the map, or a
+/// press of Later or Earlier.
+const STEP_MINUTES: i64 = 15;
 
 /// Which of the three ways the saved cities are shown.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -218,6 +223,42 @@ impl Elsewhere {
         }
         cx.notify();
     }
+
+    /// Moves the shown instant `steps` quarter hours, later when positive. A
+    /// step has no row behind it, so it keeps whatever anchor a pin already
+    /// carries and otherwise takes none, which reads as here.
+    pub(super) fn nudge(&mut self, steps: i64, cx: &mut Context<Self>) {
+        let anchor = self.pinned.as_ref().and_then(|pin| pin.anchor);
+        let from = match &self.pinned {
+            Some(pin) => pin.at.clone(),
+            None => quarter_hour(&Zoned::now()),
+        };
+        let Ok(at) = from.checked_add(Span::new().minutes(steps * STEP_MINUTES)) else {
+            return;
+        };
+        self.pinned = Some(Pin { anchor, at });
+        cx.notify();
+    }
+
+    /// A step from the keys. An open editor would go on showing what was
+    /// typed rather than the time stepped to, so it goes first.
+    fn step(&mut self, steps: i64, window: &mut Window, cx: &mut Context<Self>) {
+        self.close_editor(window, cx);
+        self.nudge(steps, cx);
+    }
+}
+
+/// `at` with its seconds and any odd minutes dropped, so stepping from the
+/// real clock lands on a round quarter rather than carrying the current second
+/// along forever.
+fn quarter_hour(at: &Zoned) -> Zoned {
+    at.round(
+        ZonedRound::new()
+            .smallest(Unit::Minute)
+            .increment(STEP_MINUTES)
+            .mode(RoundMode::Trunc),
+    )
+    .expect("a quarter hour is a valid rounding increment")
 }
 
 /// Re-renders on every minute boundary, so the shown times stay honest without
@@ -273,6 +314,8 @@ impl Render for Elsewhere {
         div()
             .key_context("Elsewhere")
             .on_action(cx.listener(|this, _: &Unpin, window, cx| this.unpin(window, cx)))
+            .on_action(cx.listener(|this, _: &Later, window, cx| this.step(1, window, cx)))
+            .on_action(cx.listener(|this, _: &Earlier, window, cx| this.step(-1, window, cx)))
             .relative()
             .size_full()
             .flex()

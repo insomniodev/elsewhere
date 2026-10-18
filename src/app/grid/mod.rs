@@ -219,16 +219,21 @@ impl Elsewhere {
         let slot = slot
             .when(shown.is_some(), |slot| slot.text_color(rgb(bright)))
             .child(label.clone());
-        let Some((anchor, city)) = column
-            .geonameid
-            .and_then(|id| Some((id, self.index.city(id)?)))
-        else {
-            return slot;
-        };
-        // Worded as the label is, with the day tag the list would give it.
-        let tip = match clock::reading(&instant, zone, self.format).day {
-            Some(day) => format!("{label} in {} · {day}", city.name),
-            None => format!("{label} in {}", city.name),
+        // Home's column pins with no row behind it, as a scrub does.
+        let (anchor, tip) = match column.geonameid {
+            None => (None, format!("{label} here")),
+            Some(id) => {
+                let Some(city) = self.index.city(id) else {
+                    return slot;
+                };
+                // Worded as the label is, with the day tag the list would
+                // give it.
+                let tip = match clock::reading(&instant, zone, self.format).day {
+                    Some(day) => format!("{label} in {} · {day}", city.name),
+                    None => format!("{label} in {}", city.name),
+                };
+                (Some(id), tip)
+            }
         };
         slot.cursor_pointer()
             .when(shown.is_none(), |slot| {
@@ -239,7 +244,7 @@ impl Elsewhere {
             // editor, just the time this label already shows.
             .on_click(cx.listener(move |this, _event, _window, cx| {
                 this.pinned = Some(Pin {
-                    anchor: Some(anchor),
+                    anchor,
                     at: instant.clone(),
                 });
                 cx.notify();
