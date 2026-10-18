@@ -8,3 +8,19 @@ gpui = "0.2.2"
 jiff = "0.2"
 rand = "0.8"
 unicode-segmentation = "1"
+
+# The dataset generators are dev tools, kept out of `cargo install`.
+[features]
+gen = []
+
+[[bin]]
+name = "geonames_gen"
+required-features = ["gen"]
+
+[[bin]]
+name = "land_gen"
+required-features = ["gen"]
+
+[[bin]]
+name = "zones_gen"
+required-features = ["gen"]

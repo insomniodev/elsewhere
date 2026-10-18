@@ -1,7 +1,8 @@
 # Snapshot of the source data used to generate the committed datasets.
-# Regenerate data/cities.tsv with scripts/fetch-geonames.sh and `cargo run --bin
-# geonames_gen`, data/land.tsv with scripts/fetch-naturalearth.sh and `cargo run
-# --bin land_gen`, data/zones.tsv with scripts/fetch-timezones.sh and `cargo run
+# Regenerate data/cities.tsv with scripts/fetch-geonames.sh and `cargo run
+# --features gen --bin geonames_gen`, data/land.tsv with
+# scripts/fetch-naturalearth.sh and `cargo run --features gen --bin land_gen`,
+# data/zones.tsv with scripts/fetch-timezones.sh and `cargo run --features gen
 # --bin zones_gen`, then update the hashes below.
 
 [[file]]
