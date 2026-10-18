@@ -29,9 +29,17 @@ fn dir(xdg: Option<&str>, home: Option<&str>) -> Option<PathBuf> {
 }
 
 fn path() -> Option<PathBuf> {
-    let xdg = env::var("XDG_CONFIG_HOME").ok();
-    let home = env::var("HOME").ok();
-    dir(xdg.as_deref(), home.as_deref()).map(|dir| dir.join("saved"))
+    let dir = if cfg!(windows) {
+        // Windows has no XDG and seldom a HOME; per-user settings go in the
+        // roaming app data folder.
+        let appdata = env::var("APPDATA").ok().filter(|path| !path.is_empty());
+        appdata.map(|appdata| PathBuf::from(appdata).join("elsewhere"))
+    } else {
+        let xdg = env::var("XDG_CONFIG_HOME").ok();
+        let home = env::var("HOME").ok();
+        dir(xdg.as_deref(), home.as_deref())
+    };
+    dir.map(|dir| dir.join("saved"))
 }
 
 /// The geonameids of `text`, in order. Blank lines, comments and anything

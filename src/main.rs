@@ -1,3 +1,7 @@
+// Release builds on Windows open no console window beside the app; debug
+// builds keep it for panics and logs.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use gpui::{
     App, Application, Bounds, KeyBinding, TitlebarOptions, WindowBounds, WindowDecorations,
     WindowOptions, prelude::*, px, size,
