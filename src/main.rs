@@ -45,10 +45,10 @@ fn main() {
                         title: Some("elsewhere".into()),
                         // Windows: the system's caption goes, its frame stays,
                         // with the shadow, resize borders and snapping. macOS:
-                        // the caption goes but the traffic lights stay, see
-                        // `Chrome::Mac`. Linux goes by the decorations below.
+                        // the caption goes, the traffic lights stay. Linux goes
+                        // by the decorations below.
                         appears_transparent: true,
-                        ..Default::default()
+                        traffic_light_position: Some(app::titlebar::MAC_TRAFFIC_LIGHTS),
                     }),
                     // Linux: the window draws its own title bar and frame,
                     // if the compositor lets it.

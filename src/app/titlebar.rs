@@ -1,6 +1,6 @@
 use gpui::{
-    Context, MouseButton, MouseDownEvent, Pixels, Window, WindowControlArea, div, prelude::*, px,
-    rgb, svg, transparent_black,
+    Context, MouseButton, MouseDownEvent, Pixels, Point, Window, WindowControlArea, div, point,
+    prelude::*, px, rgb, svg, transparent_black,
 };
 
 use super::Elsewhere;
@@ -13,13 +13,9 @@ enum Chrome {
     /// Windows works the controls and the caption itself, from the areas the
     /// title bar marks out as them.
     Windows,
-    /// TODO: macOS keeps its own traffic lights over the content once the
-    /// title bar is made transparent, and gpui can move them but not hide
-    /// them. So: draw no controls of our own, leave room on the left for the
-    /// lights (or line them up with `traffic_light_position`), and on a double
-    /// click call `titlebar_double_click`, which honors the system setting.
-    /// `start_window_move` does nothing there; dragging is AppKit's, over its
-    /// title bar region. Until then it goes as Linux does.
+    /// macOS keeps its traffic lights, which gpui cannot hide, so the title
+    /// bar makes room for them and draws no controls. Dragging is AppKit's.
+    /// TODO: untested, no Mac to run it on.
     Mac,
     /// The app works the controls and asks the compositor to move the window.
     /// The other Unixes go by the same backends.
@@ -35,6 +31,12 @@ impl Chrome {
         Chrome::Linux
     };
 }
+
+/// Where macOS puts its traffic lights: in line with the padding, centered on
+/// the title bar.
+pub(crate) const MAC_TRAFFIC_LIGHTS: Point<Pixels> = point(px(16.), px(11.));
+/// The lights' width and a gap, kept clear of the name.
+const MAC_TRAFFIC_LIGHTS_ROOM: Pixels = px(62.);
 
 /// A window control, as a footer-sized icon button.
 struct Control {
@@ -142,6 +144,8 @@ impl Elsewhere {
         } else {
             &MAXIMIZE
         };
+        // Full screen hides the lights.
+        let lights = !window.is_fullscreen();
         div()
             .flex()
             .flex_row()
@@ -162,7 +166,18 @@ impl Elsewhere {
                         // caption instead, which drags, snaps, and maximizes
                         // on a double click by itself.
                         Chrome::Windows => strip.window_control_area(WindowControlArea::Drag),
-                        Chrome::Mac | Chrome::Linux => strip.on_mouse_down(
+                        // A double click does what the system settings say.
+                        Chrome::Mac => strip
+                            .when(lights, |strip| strip.pl(MAC_TRAFFIC_LIGHTS_ROOM))
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                |event: &MouseDownEvent, window, _| {
+                                    if event.click_count == 2 {
+                                        window.titlebar_double_click();
+                                    }
+                                },
+                            ),
+                        Chrome::Linux => strip.on_mouse_down(
                             MouseButton::Left,
                             |event: &MouseDownEvent, window, _| {
                                 if event.click_count == 2 {
@@ -174,14 +189,16 @@ impl Elsewhere {
                         ),
                     }),
             )
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .gap_1()
-                    .child(self.render_control(&MINIMIZE, cx))
-                    .child(self.render_control(maximize, cx))
-                    .child(self.render_control(&CLOSE, cx)),
-            )
+            .when(!matches!(Chrome::CURRENT, Chrome::Mac), |bar| {
+                bar.child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .gap_1()
+                        .child(self.render_control(&MINIMIZE, cx))
+                        .child(self.render_control(maximize, cx))
+                        .child(self.render_control(&CLOSE, cx)),
+                )
+            })
     }
 }

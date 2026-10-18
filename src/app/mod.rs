@@ -15,7 +15,7 @@ mod resize;
 mod row;
 mod scrollbar;
 pub(crate) mod search;
-mod titlebar;
+pub(crate) mod titlebar;
 mod tooltip;
 
 use crate::cities;
