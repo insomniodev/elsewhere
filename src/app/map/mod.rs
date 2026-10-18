@@ -32,6 +32,15 @@ const OFFSET_GAP: Pixels = px(2.);
 /// The meridian ticks' height.
 const TICK: Pixels = px(3.);
 
+/// The sun's mark: a disc with rays around it, so it never reads as one of
+/// the cities' plain dots. The rays' count, where they start and end out from
+/// the centre, and their stroke.
+const SUN_RADIUS: Pixels = px(2.5);
+const SUN_RAYS: usize = 8;
+const RAY_FROM: f32 = 4.0;
+const RAY_TO: f32 = 6.5;
+const RAY_WIDTH: Pixels = px(1.);
+
 /// How far one wheel notch moves the shown instant.
 const NOTCH_MINUTES: i64 = 15;
 /// What counts as a notch when the wheel reports exact pixels, as a trackpad
@@ -283,18 +292,20 @@ impl Elsewhere {
                 // an editable constant and clamping would park the mark on an
                 // edge it never actually reaches.
                 if (geo::SOUTH..=geo::NORTH).contains(&sun.lat) {
-                    let radius = px(3.);
                     let centre = at(sun);
                     window.paint_quad(
                         fill(
                             Bounds::new(
-                                point(centre.x - radius, centre.y - radius),
-                                size(radius * 2., radius * 2.),
+                                point(centre.x - SUN_RADIUS, centre.y - SUN_RADIUS),
+                                size(SUN_RADIUS * 2., SUN_RADIUS * 2.),
                             ),
                             rgb(theme::YELLOW),
                         )
-                        .corner_radii(radius),
+                        .corner_radii(SUN_RADIUS),
                     );
+                    if let Some(path) = rays(centre) {
+                        window.paint_path(path, rgb(theme::YELLOW));
+                    }
                 }
             },
         )
@@ -349,6 +360,19 @@ fn polyline(points: impl Iterator<Item = Point<Pixels>>) -> Option<Path<Pixels>>
     }
     let mut builder = PathBuilder::stroke(ZONE_LINE_WIDTH);
     builder.add_polygon(&points, false);
+    builder.build().ok()
+}
+
+/// The sun's rays around `centre`, one stroke each, or `None` if lyon cannot
+/// tessellate them.
+fn rays(centre: Point<Pixels>) -> Option<Path<Pixels>> {
+    let mut builder = PathBuilder::stroke(RAY_WIDTH);
+    for ray in 0..SUN_RAYS {
+        let angle = std::f32::consts::TAU * ray as f32 / SUN_RAYS as f32;
+        let (sin, cos) = angle.sin_cos();
+        builder.move_to(centre + point(px(cos * RAY_FROM), px(sin * RAY_FROM)));
+        builder.line_to(centre + point(px(cos * RAY_TO), px(sin * RAY_TO)));
+    }
     builder.build().ok()
 }
 
