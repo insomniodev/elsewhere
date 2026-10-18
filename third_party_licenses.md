@@ -3,7 +3,8 @@
 ## Lucide icons
 
 `assets/icons/trash.svg`, `assets/icons/milestone.svg`,
-`assets/icons/clock-12.svg`, `assets/icons/map.svg`, `assets/icons/x.svg`,
+`assets/icons/clock-12.svg`, `assets/icons/map.svg`,
+`assets/icons/rows.svg`, `assets/icons/columns.svg`, `assets/icons/x.svg`,
 `assets/icons/minus.svg`, `assets/icons/maximize-2.svg` and
 `assets/icons/minimize-2.svg` are from
 [Lucide](https://lucide.dev).
