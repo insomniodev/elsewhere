@@ -1,10 +1,40 @@
 use gpui::{
-    Context, MouseButton, MouseDownEvent, Pixels, Window, div, prelude::*, px, rgb, svg,
-    transparent_black,
+    Context, MouseButton, MouseDownEvent, Pixels, Window, WindowControlArea, div, prelude::*, px,
+    rgb, svg, transparent_black,
 };
 
 use super::Elsewhere;
 use crate::theme;
+
+/// Who works the window's frame: the title bar is drawn the same everywhere,
+/// but what makes it move the window and its controls act differs by platform.
+#[derive(Clone, Copy)]
+enum Chrome {
+    /// Windows works the controls and the caption itself, from the areas the
+    /// title bar marks out as them.
+    Windows,
+    /// TODO: macOS keeps its own traffic lights over the content once the
+    /// title bar is made transparent, and gpui can move them but not hide
+    /// them. So: draw no controls of our own, leave room on the left for the
+    /// lights (or line them up with `traffic_light_position`), and on a double
+    /// click call `titlebar_double_click`, which honors the system setting.
+    /// `start_window_move` does nothing there; dragging is AppKit's, over its
+    /// title bar region. Until then it goes as Linux does.
+    Mac,
+    /// The app works the controls and asks the compositor to move the window.
+    /// The other Unixes go by the same backends.
+    Linux,
+}
+
+impl Chrome {
+    const CURRENT: Chrome = if cfg!(target_os = "windows") {
+        Chrome::Windows
+    } else if cfg!(target_os = "macos") {
+        Chrome::Mac
+    } else {
+        Chrome::Linux
+    };
+}
 
 /// A window control, as a footer-sized icon button.
 struct Control {
@@ -13,7 +43,10 @@ struct Control {
     size: Pixels,
     /// The icon's color under the pointer.
     hover: u32,
-    /// A plain fn, so the element can outlive the borrow that built it.
+    /// What the button is to Windows, which works it itself.
+    area: WindowControlArea,
+    /// What a click does where the app works it. A plain fn, so the element can outlive
+    /// the borrow that built it.
     click: fn(&mut Window, &mut Context<Elsewhere>),
 }
 
@@ -22,6 +55,7 @@ const MINIMIZE: Control = Control {
     icon: "icons/minus.svg",
     size: px(14.),
     hover: theme::TEXT,
+    area: WindowControlArea::Min,
     click: |window, _| window.minimize_window(),
 };
 
@@ -30,6 +64,7 @@ const MAXIMIZE: Control = Control {
     icon: "icons/maximize-2.svg",
     size: px(12.),
     hover: theme::TEXT,
+    area: WindowControlArea::Max,
     click: |window, _| window.zoom_window(),
 };
 
@@ -43,7 +78,9 @@ const CLOSE: Control = Control {
     icon: "icons/x.svg",
     size: px(14.),
     hover: theme::RED,
-    // The one window is the whole app.
+    area: WindowControlArea::Close,
+    // The one window is the whole app. On Windows the app quits on its own
+    // once its last window closes.
     click: |_, cx| cx.quit(),
 };
 
@@ -54,6 +91,7 @@ impl Elsewhere {
             icon,
             size,
             hover,
+            area,
             click,
         } = *control;
         div()
@@ -71,7 +109,15 @@ impl Elsewhere {
             .border_color(transparent_black())
             .cursor_pointer()
             .hover(|style| style.bg(rgb(theme::SURFACE0)))
-            .on_click(cx.listener(move |_, _event, window, cx| click(window, cx)))
+            .map(|button| match Chrome::CURRENT {
+                // Windows sees the press as on its own caption button and acts
+                // on it, so a click handler too would act twice. This way the
+                // maximize button also brings up snap layouts.
+                Chrome::Windows => button.window_control_area(area),
+                Chrome::Mac | Chrome::Linux => {
+                    button.on_click(cx.listener(move |_, _event, window, cx| click(window, cx)))
+                }
+            })
             .child(
                 svg()
                     .path(icon)
@@ -111,12 +157,21 @@ impl Elsewhere {
                     .text_xs()
                     .text_color(rgb(theme::OVERLAY0))
                     .child("elsewhere")
-                    .on_mouse_down(MouseButton::Left, |event: &MouseDownEvent, window, _| {
-                        if event.click_count == 2 {
-                            window.zoom_window();
-                        } else {
-                            window.start_window_move();
-                        }
+                    .map(|strip| match Chrome::CURRENT {
+                        // Windows has no moving on request: the strip is its
+                        // caption instead, which drags, snaps, and maximizes
+                        // on a double click by itself.
+                        Chrome::Windows => strip.window_control_area(WindowControlArea::Drag),
+                        Chrome::Mac | Chrome::Linux => strip.on_mouse_down(
+                            MouseButton::Left,
+                            |event: &MouseDownEvent, window, _| {
+                                if event.click_count == 2 {
+                                    window.zoom_window();
+                                } else {
+                                    window.start_window_move();
+                                }
+                            },
+                        ),
                     }),
             )
             .child(

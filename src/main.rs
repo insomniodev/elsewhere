@@ -43,9 +43,15 @@ fn main() {
                     window_min_size: Some(size(px(320.), px(360.))),
                     titlebar: Some(TitlebarOptions {
                         title: Some("elsewhere".into()),
+                        // Windows: the system's caption goes, its frame stays,
+                        // with the shadow, resize borders and snapping. macOS:
+                        // the caption goes but the traffic lights stay, see
+                        // `Chrome::Mac`. Linux goes by the decorations below.
+                        appears_transparent: true,
                         ..Default::default()
                     }),
-                    // The window draws its own title bar.
+                    // Linux: the window draws its own title bar and frame,
+                    // if the compositor lets it.
                     window_decorations: Some(WindowDecorations::Client),
                     ..Default::default()
                 },
