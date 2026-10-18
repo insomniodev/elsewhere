@@ -1,15 +1,12 @@
 //! Turns timezone-boundary-builder's "now" releases in data/raw/ into the
-//! borders the map draws, written to data/zones.tsv: every stretch where two
-//! groups of zones meet, once, simplified.
+//! zone borders the map draws, written to data/zones.tsv.
 //!
-//! The releases group together every zone that keeps the same clock from now
-//! on, so a border here is a line across which the time actually differs, for
-//! at least part of the year. The borders come from the release that covers
-//! the open ocean too, for its nautical zones; the land-only release says
-//! which of them are only the rim of a country's waters, where its clock
-//! parts from the sea's. Those would outline every coast and island, so they
-//! stay out, unless the rim carries a nautical line around waters that bulge
-//! across it.
+//! The "now" releases merge zones that keep the same clock from now on, so
+//! every border is a real change of time for at least part of the year.
+//! Borders come from the release with oceans, for its nautical zones; the
+//! land-only release marks which are just the rim of a country's waters.
+//! Those would outline every coast, so they are dropped unless a nautical
+//! line detours along them round waters that bulge across it.
 
 mod geojson;
 
@@ -24,37 +21,34 @@ const LAND_PATH: &str = "data/raw/combined-now.json";
 const FETCH: &str = "scripts/fetch-timezones.sh";
 const OUT_PATH: &str = "data/zones.tsv";
 
-/// The map's crop, as in src/geo.rs. A stretch wholly beyond either is never
-/// seen.
+/// The map's crop, as in src/geo.rs.
 const NORTH: f64 = 84.0;
 const SOUTH: f64 = -56.0;
 
 /// Douglas-Peucker tolerance in degrees. Finer than land.tsv's, since a
-/// border is a line drawn on its own rather than the rim of a fill.
+/// border is drawn as a bare line rather than the rim of a fill.
 const TOLERANCE: f64 = 0.1;
 
-/// How far apart, in degrees, the end of a rim and the loose end of a
-/// nautical line can be and still meet: the release's polygons leave the odd
-/// sliver between them rather than sharing the point.
+/// How far apart, in degrees, a rim's end and a nautical line's loose end can
+/// be and still meet: the polygons leave the odd sliver rather than share
+/// the point.
 const SNAP: f64 = 0.1;
 
 /// How far, in degrees, a rim can stray from the straight line between its
-/// ends and still be a nautical line's detour round some waters. The widest
-/// in the 2026e release, round Peru's waters off 82.5° W and round South
-/// Georgia, stray just over one; a coast the line merely meets at both ends,
-/// as Brazil's does at 37.5° W, strays two and more.
+/// ends and still be a detour. In the 2026e release the widest, round Peru's
+/// waters off 82.5° W and South Georgia, stray just over one; a coast the
+/// line merely meets at both ends, as Brazil's at 37.5° W, strays two or more.
 const DETOUR: f64 = 1.5;
 
 const OUT_HEADER: &str =
     "#the zones a border parts, comma separated, then its lon,lat pairs space separated";
 
-/// A point as a hash key: the data repeats a shared vertex bit for bit, and
-/// the two releases repeat each other's.
+/// Bit-exact, as the data repeats a shared vertex bit for bit, across both
+/// releases too.
 type Key = (u64, u64);
-/// An edge, its ends in order so it is the same edge either way round.
+/// Ends sorted, so it is the same edge either way round.
 type Edge = (Key, Key);
-/// One ring of a zone's polygons, outer or hole, with the zone it belongs to
-/// by index into the names.
+/// A ring, outer or hole, with its zone's index into the names.
 type Ring = (usize, Vec<Point>);
 
 /// What an edge of the ocean release is in the land-only one.
@@ -68,8 +62,7 @@ enum Shore {
     Inland,
 }
 
-/// One border: the zones on either side, by index into the feature names,
-/// and the line between them.
+/// `zones` index into the feature names.
 #[derive(Debug, PartialEq)]
 struct Border {
     zones: Vec<usize>,
@@ -114,8 +107,6 @@ fn run() -> Result<()> {
     Ok(())
 }
 
-/// A release's zone names, and every ring of its polygons, outer and hole
-/// alike, by index into the names.
 fn zones(path: &str) -> Result<(Vec<String>, Vec<Ring>)> {
     let text = geojson::read(Path::new(path), FETCH)?;
     let features = geojson::features(&text)?;
@@ -140,7 +131,7 @@ fn zones(path: &str) -> Result<(Vec<String>, Vec<Ring>)> {
     Ok((names, rings))
 }
 
-/// The feature's zone: the IANA name the release files its group under.
+/// The IANA name the release files the feature's group of zones under.
 fn tzid(properties: &Value, feature: usize) -> Result<String> {
     match properties.get("tzid") {
         Some(Value::String(tzid)) => Ok(tzid.clone()),
@@ -152,13 +143,11 @@ fn key(point: Point) -> Key {
     (point.lon.to_bits(), point.lat.to_bits())
 }
 
-/// An edge whichever way it is walked.
 fn edge(a: Key, b: Key) -> Edge {
     (a.min(b), a.max(b))
 }
 
-/// Every edge on the map, the zones that have it in sorted order, and where
-/// its ends are.
+/// The point behind each key, and the zones that have each edge, sorted.
 fn owners(rings: &[Ring]) -> (HashMap<Key, Point>, HashMap<Edge, Vec<usize>>) {
     let mut points: HashMap<Key, Point> = HashMap::new();
     let mut owners: HashMap<Edge, Vec<usize>> = HashMap::new();
@@ -183,9 +172,8 @@ fn owners(rings: &[Ring]) -> (HashMap<Key, Point>, HashMap<Edge, Vec<usize>>) {
     (points, owners)
 }
 
-/// Every edge of a release without the ocean, as a rim or inland. The rims
-/// are where a zone's waters end, along with the frame and the inside rims of
-/// disputed ground.
+/// For the land-only release. Besides where a zone's waters end, its rims
+/// include the frame and the inside rims of disputed ground.
 fn shores(rings: &[Ring]) -> HashMap<Edge, Shore> {
     let (_, owners) = owners(rings);
     owners
@@ -201,17 +189,14 @@ fn shores(rings: &[Ring]) -> HashMap<Edge, Shore> {
         .collect()
 }
 
-/// Every stretch of edge two or more zones share, as runs of points. The
-/// edges only one zone has are the map's frame, or the inside rim of a
-/// disputed area two zones both claim, and neither is a line where the clock
-/// changes.
+/// Runs of edge two or more zones share. Edges only one zone has are the
+/// frame or the inside rim of disputed ground, not a change of clock.
 ///
-/// A run ends wherever the zones on either side change, three ways meet, or
-/// it crosses from open sea or inland onto the rim of a zone's waters, so
-/// each comes out with one set of zones and one kind of edge to its name. A
-/// run along a rim is a coast or an island seen from the sea, and is left out,
-/// unless it is a detour: a nautical line between the same two zones meets it
-/// at both ends, and goes round the waters along it without straying far.
+/// A run stops wherever its zones change, three ways meet, or it passes onto
+/// or off a rim, so each has one set of zones and one kind of edge. A run
+/// along a rim is a coast seen from the sea and is dropped, unless it is a
+/// detour: a nautical line between the same zones meets it at both ends and
+/// it strays no more than `DETOUR` from the straight line between them.
 fn borders(rings: &[Ring], shores: &HashMap<Edge, Shore>) -> Vec<Border> {
     let (points, mut owners) = owners(rings);
     owners.retain(|_, zones| zones.len() >= 2);
@@ -238,9 +223,8 @@ fn borders(rings: &[Ring], shores: &HashMap<Edge, Shore>) -> Vec<Border> {
 
     let mut walked: HashSet<Edge> = HashSet::new();
     let mut runs: Vec<Vec<Key>> = Vec::new();
-    // Every run from a stop, then the closed loops that never meet one: an
-    // enclave wholly inside a single other zone. Sorted, so the file comes
-    // out the same from one run to the next.
+    // Runs from every stop, then the loops that meet none, such as an
+    // enclave. Sorted so the output is reproducible.
     let mut starts: Vec<Key> = stops.iter().copied().collect();
     starts.sort_unstable();
     let mut loops: Vec<Key> = next.keys().copied().collect();
@@ -272,8 +256,8 @@ fn borders(rings: &[Ring], shores: &HashMap<Edge, Shore>) -> Vec<Border> {
         }
     }
 
-    // Where a run along a rim ends on the nautical line it carries on, or
-    // within a sliver of where one breaks off.
+    // A rim run's end is at sea if a nautical line between the same zones
+    // carries on from it, or has a loose end within `SNAP` of it.
     let loose: Vec<(Point, &Vec<usize>)> = next
         .iter()
         .filter_map(|(here, neighbours)| match neighbours.as_slice() {
@@ -317,13 +301,10 @@ fn borders(rings: &[Ring], shores: &HashMap<Edge, Shore>) -> Vec<Border> {
         .collect()
 }
 
-/// Whether the edge from `a` to `b` lies wholly off the top or the bottom of
-/// the map.
 fn beyond_crop(a: Point, b: Point) -> bool {
     (a.lat > NORTH && b.lat > NORTH) || (a.lat < SOUTH && b.lat < SOUTH)
 }
 
-/// One line per border: the zones it parts, then its points, tab separated.
 fn render(borders: &[Border], names: &[String]) -> String {
     let mut out = String::from(OUT_HEADER);
     for border in borders {
@@ -354,11 +335,10 @@ mod tests {
         ]
     }
 
-    /// A border as plain values: its zones, and its points as pairs.
     type Line = (Vec<usize>, Vec<(f64, f64)>);
 
-    /// The borders' points, each run in a fixed direction and the runs in a
-    /// fixed order, for comparing without caring how they were walked.
+    /// Normalised for direction and order, so tests ignore how runs were
+    /// walked.
     fn lines(borders: &[Border]) -> Vec<Line> {
         let mut lines: Vec<_> = borders
             .iter()
@@ -386,8 +366,7 @@ mod tests {
 
     #[test]
     fn keeps_only_the_edge_two_zones_share() {
-        // Two squares side by side, meeting along x = 1. Their other edges
-        // are each one zone's own, the map's frame as far as this goes.
+        // Meeting along x = 1; their other edges stand in for the frame.
         let west = square(0.0, 0.0, 1.0);
         let east = square(1.0, 0.0, 1.0);
         let borders = borders(&[(0, west), (1, east)], &HashMap::new());
@@ -399,8 +378,7 @@ mod tests {
 
     #[test]
     fn breaks_a_border_where_three_zones_meet() {
-        // A tall zone to the west of two stacked ones: its east edge borders
-        // the lower one, then the upper one, and the two meet at (1, 1).
+        // A tall zone west of two stacked ones; all three meet at (1, 1).
         let west = vec![
             point(0.0, 0.0),
             point(1.0, 0.0),
@@ -438,9 +416,8 @@ mod tests {
 
     #[test]
     fn leaves_out_the_rim_of_a_countrys_waters() {
-        // A country's waters (zone 0) against the open sea (zone 1), which
-        // keeps a different clock: without the sea, the rim is the country's
-        // alone.
+        // A country's waters (zone 0) against open sea on another clock
+        // (zone 1). In the land-only release the rim is zone 0's alone.
         let waters = square(0.0, 0.0, 1.0);
         let sea = square(1.0, 0.0, 1.0);
         let shores = shores(&[(0, waters.clone())]);
@@ -449,10 +426,8 @@ mod tests {
 
     #[test]
     fn keeps_the_rim_a_nautical_line_detours_along() {
-        // Open sea on either side of x = 1, west (zone 0) and east (zone 1),
-        // except where a country's waters, keeping the west's clock, bulge
-        // east across the line between y = 1 and y = 2. The line goes round
-        // them, along their rim.
+        // A nautical line at x = 1 between zones 0 and 1, detouring along the
+        // rim of zone 0 waters that bulge east across it from y = 1 to y = 2.
         let west = vec![
             point(0.0, 0.0),
             point(1.0, 0.0),
@@ -497,8 +472,8 @@ mod tests {
 
     #[test]
     fn leaves_out_a_coast_a_nautical_line_meets_at_both_ends() {
-        // As above, but the waters reach far east of the line, the way the
-        // coast of West Africa lies between two points of 7.5° W.
+        // As above, but the waters reach far east of the line, as West
+        // Africa's coast does between two points of 7.5° W.
         let west = vec![
             point(0.0, 0.0),
             point(1.0, 0.0),
@@ -539,9 +514,9 @@ mod tests {
 
     #[test]
     fn bridges_a_sliver_between_a_rim_and_its_nautical_line() {
-        // As above, but where the bulge rejoins the line the two zones each
-        // take their own way round a sliver, so the rim and the line above it
-        // share no point.
+        // The detour two tests up, but where the bulge rejoins the line the
+        // zones each go their own way round a sliver, so rim and line share
+        // no point.
         let west = vec![
             point(0.0, 0.0),
             point(1.0, 0.0),

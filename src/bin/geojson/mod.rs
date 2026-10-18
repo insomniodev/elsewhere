@@ -1,8 +1,8 @@
-//! What the Natural Earth generators share: a small JSON reader, enough GeoJSON
-//! on top of it to pull each feature's polygons and properties out of a
-//! feature collection, and the line simplification both apply.
+//! What the map generators share: a small JSON reader, just enough GeoJSON to
+//! pull polygons and properties out of a feature collection, and the line
+//! simplification both apply.
 //!
-//! A directory module on purpose: a `src/bin/geojson.rs` would be taken for a
+//! A directory module because a `src/bin/geojson.rs` would be built as a
 //! binary of its own.
 
 use std::error::Error;
@@ -29,7 +29,6 @@ pub enum Value {
 }
 
 impl Value {
-    /// The value under `key`, if this is an object that has one.
     pub fn get(&self, key: &str) -> Option<&Value> {
         match self {
             Value::Object(entries) => entries
@@ -41,16 +40,14 @@ impl Value {
     }
 }
 
-/// One feature of a collection: its properties as the file has them, and its
-/// geometry as polygons, each a list of rings with the outer one first. A
-/// Polygon geometry is a single polygon; a MultiPolygon is several.
+/// Each polygon is a list of rings, outer first. A Polygon geometry gives one
+/// polygon, a MultiPolygon several.
 #[derive(Debug)]
 pub struct Feature {
     pub properties: Value,
     pub polygons: Vec<Vec<Vec<Point>>>,
 }
 
-/// Every feature in a GeoJSON FeatureCollection, in file order.
 pub fn features(text: &str) -> Result<Vec<Feature>> {
     let root = parse(text)?;
     let Some(Value::Array(features)) = root.get("features") else {
@@ -94,8 +91,8 @@ fn feature(value: &Value, feature: usize) -> Result<Feature> {
     })
 }
 
-/// Properties are small and flat, so they are copied out rather than the
-/// whole tree being kept alive for them.
+/// Copied out so the parsed tree need not be kept alive for them. Properties
+/// are flat, so nested values are dropped.
 fn clone_entry((key, value): &(String, Value)) -> (String, Value) {
     let value = match value {
         Value::Null => Value::Null,
@@ -114,8 +111,8 @@ fn list(value: &Value, feature: usize) -> Result<&[Value]> {
     }
 }
 
-/// A polygon's rings. GeoJSON repeats the first point last; the repeat is
-/// dropped here so the rest of the pipeline never sees it.
+/// GeoJSON repeats a ring's first point last; it is dropped here so nothing
+/// downstream sees it.
 fn polygon(value: &Value, feature: usize) -> Result<Vec<Vec<Point>>> {
     let rings = list(value, feature)?;
     if rings.is_empty() {
@@ -152,7 +149,6 @@ fn point(value: &Value, feature: usize) -> Result<Point> {
     }
 }
 
-/// The whole of `text` as one JSON value.
 pub fn parse(text: &str) -> Result<Value> {
     let bytes = text.as_bytes();
     let mut i = 0;
@@ -209,7 +205,7 @@ fn value(bytes: &[u8], i: &mut usize) -> Result<Value> {
     }
 }
 
-/// Steps past `end` if it comes next, for an empty array or object.
+/// For an empty array or object.
 fn close(bytes: &[u8], i: &mut usize, end: u8) -> bool {
     skip_whitespace(bytes, i);
     let closed = bytes.get(*i) == Some(&end);
@@ -219,8 +215,7 @@ fn close(bytes: &[u8], i: &mut usize, end: u8) -> bool {
     closed
 }
 
-/// After an item: a comma means another follows, `end` means that was the
-/// last. Answers whether it was the last.
+/// After an item: whether it was the last, i.e. `end` rather than a comma.
 fn separator(bytes: &[u8], i: &mut usize, end: u8) -> Result<bool> {
     skip_whitespace(bytes, i);
     match bytes.get(*i) {
@@ -272,7 +267,7 @@ fn string(bytes: &[u8], i: &mut usize) -> Result<String> {
     }
 }
 
-/// The character an escape stands for, with `i` just past the backslash.
+/// `i` starts just past the backslash.
 fn escape(bytes: &[u8], i: &mut usize) -> Result<char> {
     let at = *i;
     let Some(c) = bytes.get(*i) else {
@@ -337,9 +332,8 @@ fn unterminated(i: usize) -> Box<dyn Error> {
     format!("byte {i}: text ends mid-value").into()
 }
 
-/// Douglas-Peucker over lon/lat as if they were planar; the map projection is
-/// equirectangular, so degrees are the units the error is judged in anyway.
-/// The first and last points are always kept.
+/// Douglas-Peucker over lon/lat as if planar: the map is equirectangular, so
+/// degrees are what the error is judged in anyway. Keeps both endpoints.
 pub fn simplify(points: &[Point], tolerance: f64) -> Vec<Point> {
     if points.len() < 3 {
         return points.to_vec();
@@ -389,8 +383,7 @@ pub fn distance_to_segment(point: Point, start: Point, end: Point) -> f64 {
     ((point.lon - nx).powi(2) + (point.lat - ny).powi(2)).sqrt()
 }
 
-/// `lon,lat` pairs to two places, space separated: how both generated files
-/// write a ring.
+/// The ring format both generated files share, to two decimal places.
 pub fn render_ring(out: &mut String, ring: &[Point]) {
     for (i, point) in ring.iter().enumerate() {
         if i > 0 {
@@ -400,7 +393,7 @@ pub fn render_ring(out: &mut String, ring: &[Point]) {
     }
 }
 
-/// The raw file at `path`, or an error naming the script that downloads it.
+/// The error names the script that downloads the file.
 pub fn read(path: &Path, fetch: &str) -> Result<String> {
     fs::read_to_string(path).map_err(|e| {
         format!(
@@ -550,8 +543,8 @@ mod tests {
 
     #[test]
     fn simplify_measures_distance_to_the_segment_not_its_line() {
-        // The middle point is far along the line through the ends but close to
-        // the segment itself, which a line-distance test would keep.
+        // The middle point is close to the line through the ends but far past
+        // the segment, so a line-distance test would drop it.
         let points = [point(0.0, 0.0), point(10.0, 0.05), point(0.1, 0.0)];
         assert_eq!(simplify(&points, TOLERANCE), points);
     }

@@ -1,6 +1,5 @@
-//! Turns the Natural Earth 110m land GeoJSON in data/raw/ into the coarse
-//! outlines the map draws: outer rings only, simplified, written to
-//! data/land.tsv.
+//! Turns the Natural Earth 110m land GeoJSON in data/raw/ into the map's
+//! coarse outlines in data/land.tsv: outer rings only, simplified.
 
 // Shared with zones_gen, which reads the feature properties this one ignores.
 #[allow(dead_code)]
@@ -20,7 +19,7 @@ const SOUTH_CUTOFF: f64 = -56.0;
 /// Douglas-Peucker tolerance in degrees; the map is about a pixel per degree.
 const TOLERANCE: f64 = 0.15;
 
-/// Fewer than this and the ring has no area left worth drawing.
+/// Below this a ring has no area worth drawing.
 const MIN_POINTS: usize = 4;
 
 const OUT_HEADER: &str = "#lon,lat pairs, one ring per line";
@@ -67,8 +66,7 @@ fn run() -> Result<()> {
     Ok(())
 }
 
-/// One line per ring, points separated by spaces. Rings are left open: the
-/// closing point a GeoJSON ring repeats is dropped on parse.
+/// Rings are left open: parsing drops the closing point GeoJSON repeats.
 fn render(rings: &[Vec<Point>]) -> String {
     let mut out = String::from(OUT_HEADER);
     for ring in rings {

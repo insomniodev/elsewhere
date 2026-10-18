@@ -1,5 +1,5 @@
-//! Parses the GeoNames dumps in data/raw/, filters them down to places worth
-//! putting on a clock, writes data/cities.tsv and reports stats.
+//! Filters the GeoNames dumps in data/raw/ down to places worth putting on a
+//! clock, written to data/cities.tsv.
 
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
@@ -17,22 +17,21 @@ const CITY_COLUMNS: usize = 19;
 const COUNTRY_COLUMNS: usize = 19;
 const ADMIN1_COLUMNS: usize = 4;
 
-/// Feature codes worth keeping: real, currently populated places. Everything
-/// else is dropped, notably PPLX (sections of a city), PPLH (historical),
-/// PPLQ (abandoned), PPLW (destroyed), PPLR, PPLCH and STLMT.
+/// Real, currently populated places. Notably dropped: PPLX (sections of a
+/// city), PPLH (historical), PPLQ (abandoned), PPLW (destroyed), PPLR, PPLCH
+/// and STLMT.
 const KEPT_FEATURE_CODES: &[&str] = &[
     "PPL", "PPLA", "PPLA2", "PPLA3", "PPLA4", "PPLA5", "PPLC", "PPLF", "PPLG", "PPLL", "PPLS",
 ];
 
-/// How many offending rows an error message names before it gives up.
+/// How many offending rows an error message names.
 const MAX_REPORTED_ROWS: usize = 5;
 
-/// The one comment line data/cities.tsv opens with, naming its columns.
 const OUT_HEADER: &str =
     "#geonameid\tname\tasciiname\tcountry\tadmin1\tpopulation\ttimezone\tlatitude\tlongitude";
 
-/// The columns of cities5000.txt we keep; the rest are dropped on parse.
-#[allow(dead_code)] // most fields are only read once the dataset is emitted
+/// The columns of cities5000.txt we keep.
+#[allow(dead_code)] // alternatenames and feature_class are not emitted
 #[derive(Debug)]
 struct RawCity {
     geonameid: u32,
@@ -49,7 +48,7 @@ struct RawCity {
     timezone: String,
 }
 
-/// A row of data/cities.tsv: codes resolved to names, ready to be written out.
+/// A row of data/cities.tsv, codes resolved to names.
 #[derive(Debug)]
 struct Row {
     geonameid: u32,
@@ -59,9 +58,7 @@ struct Row {
     admin1: String,
     population: u64,
     timezone: String,
-    /// Degrees north of the equator, negative south.
     latitude: f64,
-    /// Degrees east of Greenwich, negative west.
     longitude: f64,
 }
 
@@ -110,11 +107,10 @@ fn run() -> Result<()> {
     Ok(())
 }
 
-/// Turns kept rows into emittable ones: country codes become country names,
-/// "CC.ADM1" becomes an admin1 name, and an asciiname that merely repeats name
-/// is blanked (the loader falls back to name). An admin1 code the dump does not
-/// explain becomes an empty string, since plenty of places have no useful
-/// subdivision; an unknown country code is a bug in the dumps and fails the run.
+/// An asciiname that repeats name is blanked, as the loader falls back to
+/// name. An unknown admin1 code becomes empty, since plenty of places have no
+/// useful subdivision; an unknown country code is a bug in the dumps and
+/// fails the run.
 fn resolve(
     cities: Vec<RawCity>,
     countries: &HashMap<String, String>,
@@ -155,8 +151,7 @@ fn resolve(
         .collect())
 }
 
-/// The whole file: a header comment, then one tab-separated row per city.
-/// Nothing needs escaping, every value came out of a tab-separated dump.
+/// Nothing needs escaping: every value came out of a tab-separated dump.
 fn render(rows: &[Row]) -> String {
     let mut out = String::from(OUT_HEADER);
     for row in rows {
@@ -178,10 +173,9 @@ fn render(rows: &[Row]) -> String {
     out
 }
 
-/// Checks every kept row against the tzdb jiff reads, returning how many
-/// distinct zones the rows name. A zone jiff cannot resolve means the dump and
-/// this machine's tzdb disagree, so the run fails rather than emitting names
-/// the app would later choke on.
+/// Returns how many distinct zones the rows name. A zone jiff cannot resolve
+/// means the dump and this machine's tzdb disagree, so the run fails rather
+/// than emit names the app would choke on.
 fn validate_timezones(cities: &[RawCity]) -> Result<usize> {
     let mut counts: HashMap<&str, usize> = HashMap::new();
     let mut missing: Vec<&RawCity> = Vec::new();
@@ -229,7 +223,7 @@ fn validate_timezones(cities: &[RawCity]) -> Result<usize> {
     Ok(counts.len())
 }
 
-/// Rows whose feature code is not in the allowlist, most common first.
+/// Most common first.
 fn dropped_per_feature(cities: &[RawCity]) -> Vec<(String, usize)> {
     let mut counts: HashMap<&str, usize> = HashMap::new();
     for city in cities {
@@ -256,9 +250,8 @@ fn keep_by_feature(cities: Vec<RawCity>) -> Vec<RawCity> {
         .collect()
 }
 
-/// Collapses rows sharing a (name, country, admin1) key, keeping the most
-/// populous one; ties go to the lower geonameid. Output is sorted by
-/// geonameid so a run is reproducible.
+/// Keeps the most populous row per (name, country, admin1), ties to the lower
+/// geonameid. Sorted by geonameid so a run is reproducible.
 fn dedup(cities: Vec<RawCity>) -> Vec<RawCity> {
     let mut best: HashMap<(String, String, String), RawCity> = HashMap::new();
     for city in cities {
@@ -603,7 +596,7 @@ JP.40\tTokyo\tTokyo\t1850144";
 
         assert_eq!(rows[0].name, "Tokyo");
         assert!(rows[0].asciiname.is_empty());
-        // Aruba has no admin1 code at all, and none of its own in the table.
+        // Malmok has no admin1 code at all.
         assert!(rows[2].admin1.is_empty());
     }
 
