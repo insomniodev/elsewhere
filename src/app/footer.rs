@@ -7,15 +7,13 @@ use super::{Elsewhere, View};
 use crate::clock::{self, Format};
 use crate::theme;
 
-/// A view preference the footer offers as an icon that is lit while on.
 struct Toggle {
     id: &'static str,
     icon: &'static str,
-    /// The icon's own size, since glyphs fill their box unevenly: a circle
-    /// runs edge to edge where the signpost leaves a margin, so drawn equal
-    /// it looks bigger.
+    /// Glyphs fill their box unevenly: a circle runs edge to edge where the
+    /// signpost leaves a margin, so drawn equal it looks bigger.
     size: Pixels,
-    /// The tooltip, while off and while on.
+    /// Off, then on.
     tips: [&'static str; 2],
     /// A plain fn, so the element can outlive the borrow that built it.
     click: fn(&mut Elsewhere, &mut Window, &mut Context<Elsewhere>),
@@ -29,12 +27,11 @@ const FORMAT: Toggle = Toggle {
     click: Elsewhere::toggle_format,
 };
 
-/// One way of showing the cities, as a segment of the view switch.
 struct Segment {
     view: View,
     id: &'static str,
     icon: &'static str,
-    /// The tooltip, while another view is shown and while this one is.
+    /// Another view shown, then this one.
     tips: [&'static str; 2],
 }
 
@@ -73,16 +70,15 @@ impl Elsewhere {
         self.close_editor(window, cx);
     }
 
-    /// Shows `to`. Asking for the view already shown leaves it as it is.
     fn switch(&mut self, to: View, window: &mut Window, cx: &mut Context<Self>) {
         if self.view == to {
             return;
         }
         self.view = to;
-        // Each showing of the grid opens on now, wherever it was left.
+        // The grid opens on now each time, wherever it was left.
         self.grid_at_now.set(false);
-        // The other views have no box for an open editor to live in, and its
-        // focus would be stranded there.
+        // Not every view has a box for an open editor, and its focus would be
+        // stranded where there is none.
         self.close_editor(window, cx);
     }
 
@@ -99,8 +95,6 @@ impl Elsewhere {
         cx.notify();
     }
 
-    /// A footer toggle: an icon in the same box as the bin, lit in the accent
-    /// while on, with a tooltip saying what it does.
     fn render_toggle(
         &self,
         toggle: &Toggle,
@@ -122,8 +116,8 @@ impl Elsewhere {
             .items_center()
             .justify_center()
             .rounded_md()
-            // An invisible border, so the icon sits in the same content box
-            // as the bin's does inside its dashed one.
+            // Invisible, so the icon sits in the same box as the bin's inside
+            // its dashed one.
             .border_1()
             .border_color(transparent_black())
             .cursor_pointer()
@@ -134,8 +128,7 @@ impl Elsewhere {
                 svg()
                     .path(icon)
                     .size(size)
-                    // An svg paints only in a color set on itself; the
-                    // parent's does not reach it.
+                    // An svg does not inherit its parent's color.
                     .text_color(if on {
                         rgb(theme::BLUE)
                     } else {
@@ -144,9 +137,8 @@ impl Elsewhere {
             )
     }
 
-    /// The three views side by side in a sunken trough, the one shown raised
-    /// and lit in the accent. Each segment keeps the toggles' box, so the
-    /// icons line up with the bin beside them.
+    /// Each segment keeps the toggles' box, so the icons line up with the bin
+    /// beside them.
     fn render_switch(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
@@ -185,8 +177,7 @@ impl Elsewhere {
                         svg()
                             .path(icon)
                             .size_4()
-                            // An svg paints only in a color set on itself; the
-                            // parent's does not reach it.
+                            // An svg does not inherit its parent's color.
                             .text_color(if on {
                                 rgb(theme::BLUE)
                             } else {
@@ -196,10 +187,8 @@ impl Elsewhere {
             }))
     }
 
-    /// The strip under the search that says a what-if time is in force: which
-    /// row it was typed into, what it reads there, and the way out. A pin with
-    /// no row reads in this machine's zone instead. Only there while pinned;
-    /// entering a mode on purpose earns the shift.
+    /// A pin with no row reads in this machine's zone. Shown only while pinned:
+    /// entering a mode on purpose earns the layout shift.
     pub(super) fn render_banner(
         &self,
         now: &Zoned,
@@ -260,9 +249,7 @@ impl Elsewhere {
         )
     }
 
-    /// Where a dragged row goes to be deleted. Dashed at rest so it reads as a
-    /// place to drop rather than a button, lit in the accent once the row is
-    /// over it.
+    /// Dashed so it reads as a place to drop rather than a button.
     fn render_bin(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .id("bin")
@@ -289,17 +276,14 @@ impl Elsewhere {
                 svg()
                     .path("icons/trash.svg")
                     .size_3p5()
-                    // An svg paints only in a color set on itself; the
-                    // parent's does not reach it.
+                    // An svg does not inherit its parent's color.
                     .text_color(rgb(theme::SUBTEXT0))
                     .drag_over::<DragRow>(|style, _, _, _| style.text_color(rgb(theme::BLUE))),
             )
     }
 
-    /// The strip along the bottom: the view switch on the left, joined by the
-    /// bin for as long as a row is in flight, and the reading preferences on
-    /// the right. It is always there, at a fixed height, so the list above
-    /// never shifts as controls come and go.
+    /// Always there at a fixed height, so the list above never shifts as
+    /// controls come and go.
     pub(super) fn render_footer(&self, dragging: bool, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
@@ -326,8 +310,7 @@ impl Elsewhere {
                             self.render_toggle(&FORMAT, self.format == Format::Twelve, cx)
                         }),
                     )
-                    // On a map the cities already stand where they stand, so
-                    // there is no order left to choose.
+                    // A map has no order to choose.
                     .children(
                         (self.saved.len() > 1 && self.view != View::Map)
                             .then(|| self.render_toggle(&WESTWARD, self.westward, cx)),

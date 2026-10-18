@@ -1,6 +1,5 @@
-//! The heads over the grid's columns: the city's name, which is the handle
-//! it is dragged by as the map's dot is, over the offset it stands at. Set
-//! flush right over the labels, as a calendar sets its zone names.
+//! A head's name is its drag handle, as the map's dot is. Set flush right over
+//! the labels, as a calendar sets its zone names.
 
 use gpui::{Context, Pixels, Styled, div, prelude::*, px, rgb};
 use jiff::Zoned;
@@ -12,13 +11,11 @@ use crate::app::tooltip::Tooltip;
 use crate::clock;
 use crate::theme;
 
-/// The strip's height: two label lines and the air under them. Fixed, so a
-/// column with no offset line keeps the rules level, and the hours' scrollbar
-/// knows where to start.
+/// Fixed, so a column with no offset line keeps the rules level, and the
+/// hours' scrollbar knows where to start.
 pub(super) const HEAD: Pixels = px(40.);
 
 impl Elsewhere {
-    /// The strip of heads, one per column.
     pub(super) fn render_heads(
         &self,
         columns: &[Column],
@@ -33,9 +30,8 @@ impl Elsewhere {
         )
     }
 
-    /// One column: its name, then its offset now. The name is all the room
-    /// there is, so the tooltip carries the full label and what the zone is
-    /// called today.
+    /// The name is all the room there is, so the tooltip carries the full
+    /// label and what the zone is called today.
     fn render_head(
         &self,
         column: &Column,
@@ -94,12 +90,9 @@ impl Elsewhere {
     }
 }
 
-/// A head's line, ended in an ellipsis when the column is too narrow to hold
-/// it. This is `truncate` written out with the text left wrappable, which is
-/// what puts the ellipsis in the right place: nowrap text has no wrap width,
-/// and gpui keeps the first shaping of such a line for the rest of the frame —
-/// one of the passes taffy takes to size the column, against a width of zero
-/// or of the whole name, and never the width the head ends up with.
+/// `truncate` with the text left wrappable. gpui keeps a nowrap line's first
+/// shaping for the frame, from a taffy sizing pass at zero or full width, so
+/// the ellipsis would land in the wrong place.
 fn shortened<T: Styled>(line: T) -> T {
     line.text_ellipsis()
         .line_clamp(1)

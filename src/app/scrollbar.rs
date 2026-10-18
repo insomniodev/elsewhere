@@ -2,13 +2,10 @@ use gpui::{Axis, Bounds, Pixels, ScrollHandle, canvas, fill, point, prelude::*, 
 
 use crate::theme;
 
-/// A scrollbar: a thumb painted only while the content overflows along `axis`.
-/// It reads the handle at paint time, after layout has settled, so it needs no
-/// state of its own — but it is display-only; the wheel scrolls. `inset` is
-/// where the bar sits across the other axis: the offset from the container's
-/// right edge for a vertical bar, from its bottom edge for a horizontal one.
-/// Negative hangs it outside the container, which is how the saved list keeps
-/// its bar out of the delete column.
+/// Display-only; the wheel scrolls. Reads the handle at paint time, after
+/// layout has settled, so it keeps no state. `inset` is the offset from the
+/// container's right edge, or bottom edge for a horizontal bar; negative hangs
+/// it outside, in the window padding, clear of the content.
 pub(super) fn scrollbar(handle: &ScrollHandle, axis: Axis, inset: Pixels) -> impl IntoElement {
     let scroll = handle.clone();
     canvas(

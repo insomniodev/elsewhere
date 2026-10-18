@@ -1,6 +1,5 @@
-//! The saved cities over the map: a dot where each one stands, and a label
-//! beside it saying what time it is there. Both are ordinary divs rather than
-//! canvas paint, so they hover, click and drag like the list's rows do.
+//! The cities' dots and labels are divs rather than canvas paint, so they
+//! hover, click and drag like the list's rows do.
 
 use gpui::{
     AnyElement, Context, Font, Pixels, Point, SharedString, Size, TextRun, Window, div, point,
@@ -16,40 +15,35 @@ use crate::clock;
 use crate::geo::{self, LonLat};
 use crate::theme;
 
-/// The dot's diameter, and half of it: the radius the label placement keeps
-/// clear.
+/// The radius is what the label placement keeps clear.
 const DOT: Pixels = px(7.);
 const RADIUS: f32 = 3.5;
 
-/// The label's box: one line of text, and how far it stands off its dot.
 const LABEL_HEIGHT: f32 = 16.0;
 const LABEL_GAP: f32 = 3.0;
 
-/// The space between a label's name, time and day tag.
 const PART_GAP: Pixels = px(4.);
 
-/// One saved city as the map draws it, measured and ready to place.
 struct Marker {
     geonameid: u32,
-    /// The dot's centre, in the map rect's own coordinates.
+    /// In the map rect's own coordinates.
     centre: Point<f32>,
     /// The full name, for the tooltip.
     label: String,
     name: String,
     time: String,
     day: Option<String>,
-    /// Only a city whose zone resolved can anchor a pin, as in the list.
+    /// Only a resolved zone can anchor a pin, as in the list.
     known: bool,
-    /// Whether this is the zone the machine itself keeps.
+    /// The machine's own zone.
     home: bool,
-    /// How wide the label will draw, in the faces it will draw in.
+    /// The label's drawn width.
     width: f32,
 }
 
 impl Elsewhere {
-    /// The dots and labels laid over the canvas, back to front: labels first,
-    /// so a dot is never buried under one. Empty until the canvas has measured
-    /// itself, since there is no rect to place anything in before that.
+    /// Labels first, so a dot is never buried under one. Empty until the
+    /// canvas has measured itself.
     pub(super) fn render_pins(
         &self,
         saved: &[u32],
@@ -90,9 +84,8 @@ impl Elsewhere {
         elements
     }
 
-    /// Reads each saved city into what the map needs to draw it, in the order
-    /// given: `place` lets earlier markers win, and the saved order is the one
-    /// the user arranged.
+    /// Order matters: `place` lets earlier markers win, and the saved order is
+    /// the one the user arranged.
     fn markers(
         &self,
         saved: &[u32],
@@ -102,8 +95,8 @@ impl Elsewhere {
     ) -> Vec<Marker> {
         let home = Zoned::now().time_zone().iana_name().map(str::to_string);
         let text = window.text_style().font();
-        // Every part of a label draws at `text_xs`, so name and time read as
-        // one line and the box stays small enough to find room beside its dot.
+        // All of a label is `text_xs`, so it reads as one line and stays small
+        // enough to find room beside its dot.
         let text_size = rems(0.75).to_pixels(window.rem_size());
         let mono = match self.mono.clone() {
             Some(family) => Font {
@@ -154,9 +147,8 @@ impl Elsewhere {
             .collect()
     }
 
-    /// The city's mark: filled in the accent, or drawn as an outline for the
-    /// zone this machine is already in, since that one is the reader's own
-    /// place rather than an elsewhere.
+    /// Hollow for the machine's own zone, since that is the reader's place
+    /// rather than an elsewhere.
     fn render_dot(
         &self,
         marker: &Marker,
@@ -166,8 +158,7 @@ impl Elsewhere {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let geonameid = marker.geonameid;
-        // A label that found no room leaves the dot as the only place the time
-        // can still be read.
+        // Without a label, the tooltip is the only place to read the time.
         let tip = if unlabelled {
             format!("{} · {}", marker.label, marker.time)
         } else {
@@ -199,8 +190,7 @@ impl Elsewhere {
             .into_any_element()
     }
 
-    /// The city's name and its reading, on one line beside the dot. The time
-    /// opens the same what-if editor a row's does.
+    /// The time opens the same what-if editor a row's does.
     fn render_label(
         &self,
         marker: &Marker,
@@ -225,8 +215,8 @@ impl Elsewhere {
                     .child(marker.name.clone()),
             )
             .child(match &self.editing {
-                // The editor is taller than the line it replaces, so it
-                // overhangs the label rather than moving it.
+                // Taller than the line, so it overhangs rather than moving
+                // the label.
                 Some((editing, input)) if *editing == geonameid => {
                     self.render_editor(input, cx).flex_none().into_any_element()
                 }
@@ -259,9 +249,8 @@ impl Elsewhere {
     }
 }
 
-/// How wide `text` draws in `font` at `size`. The labels are placed before the
-/// window lays them out, so the shaper has to be asked directly: a guess from
-/// character counts would leave them overlapping.
+/// Labels are placed before layout, so the shaper is asked directly; a guess
+/// from character counts would leave them overlapping.
 fn measure(window: &Window, text: &str, font: &Font, size: Pixels) -> f32 {
     if text.is_empty() {
         return 0.0;

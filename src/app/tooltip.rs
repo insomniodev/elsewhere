@@ -1,6 +1,5 @@
-//! The label that surfaces over a control after the pointer has rested on it.
-//! gpui shows whatever view the element's tooltip builder hands back; this is
-//! the one view all of ours are.
+//! gpui shows whatever view a tooltip builder returns; this is the one all of
+//! ours use.
 
 use gpui::{AnyView, App, Render, SharedString, Window, div, prelude::*, rgb};
 
@@ -11,7 +10,6 @@ pub(super) struct Tooltip {
 }
 
 impl Tooltip {
-    /// A builder for `.tooltip()` that shows `text`.
     pub(super) fn text(
         text: impl Into<SharedString>,
     ) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {

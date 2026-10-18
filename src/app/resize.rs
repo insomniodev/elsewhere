@@ -3,15 +3,13 @@ use gpui::{
     prelude::*, px,
 };
 
-/// How far in from an edge the pointer can grab it. The window padding is
-/// wider than this, so nothing clickable is ever covered.
+/// Narrower than the window padding, so nothing clickable is covered.
 const EDGE: Pixels = px(4.);
-/// A corner's grab square: wider than an edge, so it is easy to hit.
+/// Wider than an edge, so a corner is easy to hit.
 const CORNER: Pixels = px(8.);
 
-/// The invisible strips along the window's borders that resize it, standing
-/// in for the ones the frame the window goes without would give. A maximized
-/// window has none, and a tiled one none along its tiled sides.
+/// Stand in for the resize borders of the frame the window goes without.
+/// None while maximized, and none along tiled sides.
 pub(super) fn handles(window: &Window) -> Vec<AnyElement> {
     let tiling = match window.window_decorations() {
         Decorations::Client { tiling } if !window.is_maximized() => tiling,

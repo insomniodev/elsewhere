@@ -26,11 +26,9 @@ impl Render for DragRow {
     }
 }
 
-/// Dresses an element as a landing place for a dragged row: a transparent top
-/// border that lights up as the insertion line while `open`. The caller
-/// attaches the `on_drop` that says where the row lands, and may color the
-/// border at rest, as the list's rules do. Closed, the border is still worn,
-/// so the layout does not change with the view.
+/// A transparent top border that lights up as the insertion line while
+/// `open`, and is worn even closed so the layout does not change with the
+/// view. The caller attaches the `on_drop`, and may color the border at rest.
 pub(super) fn drop_target(element: Div, open: bool) -> Div {
     element
         .border_t_1()
@@ -41,10 +39,9 @@ pub(super) fn drop_target(element: Div, open: bool) -> Div {
 }
 
 impl Elsewhere {
-    /// The constructor `on_drag` calls once a drag actually starts: it notes
-    /// which row is in flight, asks for the frame that shows the bin, and hands
-    /// back the preview that follows the cursor. Shared by the list's rows and
-    /// the map's dots, which are the same drag wearing different clothes.
+    /// Runs once a drag actually starts, noting the row in flight so the next
+    /// frame shows the bin. Shared by the list's rows, the map's dots and the
+    /// grid's heads.
     pub(super) fn drag_preview(
         cx: &mut Context<Self>,
     ) -> impl Fn(&DragRow, Point<Pixels>, &mut Window, &mut App) -> Entity<DragRow> + 'static {
@@ -62,7 +59,7 @@ impl Elsewhere {
         }
     }
 
-    /// Lands a dragged row before `before`, or at the end without one.
+    /// `None` lands the row at the end.
     pub(super) fn drop(&mut self, dragged: u32, before: Option<u32>, cx: &mut Context<Self>) {
         self.drag = None;
         if saved::reorder(&mut self.saved, dragged, before) {

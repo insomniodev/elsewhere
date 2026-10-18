@@ -6,19 +6,19 @@ use gpui::{
 use super::Elsewhere;
 use crate::theme;
 
-/// Who works the window's frame: the title bar is drawn the same everywhere,
-/// but what makes it move the window and its controls act differs by platform.
+/// The title bar looks the same everywhere, but what moves the window and
+/// works its controls differs by platform.
 #[derive(Clone, Copy)]
 enum Chrome {
-    /// Windows works the controls and the caption itself, from the areas the
-    /// title bar marks out as them.
+    /// Windows works the controls and caption itself, from the areas the title
+    /// bar marks out.
     Windows,
-    /// macOS keeps its traffic lights, which gpui cannot hide, so the title
-    /// bar makes room for them and draws no controls. Dragging is AppKit's.
+    /// gpui cannot hide the traffic lights, so the title bar makes room for
+    /// them and draws no controls. AppKit does the dragging.
     /// TODO: untested, no Mac to run it on.
     Mac,
-    /// The app works the controls and asks the compositor to move the window.
-    /// The other Unixes go by the same backends.
+    /// The app works the controls and asks the compositor to move the window;
+    /// the other Unixes share the backends.
     Linux,
 }
 
@@ -32,22 +32,20 @@ impl Chrome {
     };
 }
 
-/// Where macOS puts its traffic lights: in line with the padding, centered on
-/// the title bar.
+/// In line with the padding, centered on the title bar.
 pub(crate) const MAC_TRAFFIC_LIGHTS: Point<Pixels> = point(px(16.), px(11.));
-/// The lights' width and a gap, kept clear of the name.
+/// The lights' width plus a gap before the name.
 const MAC_TRAFFIC_LIGHTS_ROOM: Pixels = px(62.);
 
-/// A window control, as a footer-sized icon button.
 struct Control {
     id: &'static str,
     icon: &'static str,
     size: Pixels,
-    /// The icon's color under the pointer.
+    /// The icon's color on hover.
     hover: u32,
-    /// What the button is to Windows, which works it itself.
+    /// For Windows, which works the button itself.
     area: WindowControlArea,
-    /// What a click does where the app works it. A plain fn, so the element can outlive
+    /// Where the app works the button. A plain fn, so the element can outlive
     /// the borrow that built it.
     click: fn(&mut Window, &mut Context<Elsewhere>),
 }
@@ -81,8 +79,8 @@ const CLOSE: Control = Control {
     size: px(14.),
     hover: theme::RED,
     area: WindowControlArea::Close,
-    // The one window is the whole app. On Windows the app quits on its own
-    // once its last window closes.
+    // The one window is the whole app. Windows quits by itself once the last
+    // window closes.
     click: |_, cx| cx.quit(),
 };
 
@@ -105,16 +103,15 @@ impl Elsewhere {
             .items_center()
             .justify_center()
             .rounded_md()
-            // The same invisible border as the footer's buttons, so the icons
-            // sit in the same box.
+            // Invisible, as on the footer's buttons, so the icons share a box.
             .border_1()
             .border_color(transparent_black())
             .cursor_pointer()
             .hover(|style| style.bg(rgb(theme::SURFACE0)))
             .map(|button| match Chrome::CURRENT {
-                // Windows sees the press as on its own caption button and acts
-                // on it, so a click handler too would act twice. This way the
-                // maximize button also brings up snap layouts.
+                // Windows acts on the press as its own caption button, so a
+                // click handler would act twice. This also gives maximize its
+                // snap layouts.
                 Chrome::Windows => button.window_control_area(area),
                 Chrome::Mac | Chrome::Linux => {
                     button.on_click(cx.listener(move |_, _event, window, cx| click(window, cx)))
@@ -124,16 +121,13 @@ impl Elsewhere {
                 svg()
                     .path(icon)
                     .size(size)
-                    // An svg paints only in a color set on itself; the
-                    // parent's does not reach it.
+                    // An svg does not inherit its parent's color.
                     .text_color(rgb(theme::OVERLAY0))
                     .group_hover(id, |style| style.text_color(rgb(hover))),
             )
     }
 
-    /// The strip along the top that stands in for the title bar the window
-    /// goes without: the app's name and empty space that move the window, a
-    /// double click on them maximizing, and the window's controls on the right.
+    /// Stands in for the title bar the window goes without.
     pub(super) fn render_titlebar(
         &self,
         window: &mut Window,
@@ -151,7 +145,7 @@ impl Elsewhere {
             .flex_row()
             .items_center()
             .h_5()
-            // The name rides inside the empty space, so it moves the window too.
+            // The name sits in the drag strip, so it moves the window too.
             .child(
                 div()
                     .flex_1()
@@ -162,9 +156,8 @@ impl Elsewhere {
                     .text_color(rgb(theme::OVERLAY0))
                     .child("elsewhere")
                     .map(|strip| match Chrome::CURRENT {
-                        // Windows has no moving on request: the strip is its
-                        // caption instead, which drags, snaps, and maximizes
-                        // on a double click by itself.
+                        // Windows has no move on request; the strip is its
+                        // caption, which drags, snaps and maximizes by itself.
                         Chrome::Windows => strip.window_control_area(WindowControlArea::Drag),
                         // A double click does what the system settings say.
                         Chrome::Mac => strip

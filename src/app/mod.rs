@@ -30,20 +30,17 @@ use crate::zones;
 use scrollbar::scrollbar;
 use search::{SearchEvent, SearchPicker};
 
-// Keys the pin editor answers to. The vendored input claims neither, so they
-// bubble up to the wrapper div carrying the "PinEditor" context.
+// The vendored input claims neither key, so they bubble up to the
+// "PinEditor" wrapper.
 actions!(pin_editor, [Commit, Cancel]);
 
-// Escape from anywhere in the window: back to the live clock. The search
-// picker lets it through only when it has nothing of its own to clear. Later
-// and Earlier step the shown instant from anywhere too, as the map's wheel does.
+// Window-wide. The search picker lets escape through only when it has
+// nothing of its own to clear.
 actions!(elsewhere, [Unpin, Later, Earlier]);
 
-/// How far one step moves the shown instant: a wheel notch over the map, or a
-/// press of Later or Earlier.
+/// One wheel notch over the map, or one press of Later or Earlier.
 const STEP_MINUTES: i64 = 15;
 
-/// Which of the three ways the saved cities are shown.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum View {
     #[default]
@@ -54,15 +51,14 @@ pub(crate) enum View {
 
 /// A what-if time in effect.
 pub(crate) struct Pin {
-    /// The row the time was typed into, by geonameid. `None` when it came
-    /// from no row at all, as a scrub on the map does.
+    /// The row the time was typed into. `None` for a scrub on the map.
     pub(crate) anchor: Option<u32>,
     /// The instant every row reads from, held in home's zone.
     pub(crate) at: Zoned,
 }
 
-/// The color a what-if time is drawn in: the readings, then the banner's fill
-/// and edge. `tint` and `edge` carry their alpha.
+/// A what-if time's readings, banner fill and banner edge; the last two carry
+/// their alpha.
 pub(crate) struct Accent {
     pub(crate) text: u32,
     pub(crate) tint: u32,
@@ -70,8 +66,7 @@ pub(crate) struct Accent {
 }
 
 impl Pin {
-    /// Yellow for a time typed into a row, mauve for one scrubbed to, so the
-    /// two read apart at a glance.
+    /// Typed and scrubbed times differ in color so they read apart at a glance.
     pub(crate) fn accent(&self) -> Accent {
         match self.anchor {
             Some(_) => Accent {
@@ -89,60 +84,46 @@ impl Pin {
 }
 
 pub struct Elsewhere {
-    /// The search region, which owns its input and results and reports a choice
-    /// back as a `SearchEvent`.
     picker: Entity<SearchPicker>,
     index: Rc<SearchIndex>,
-    /// The geonameids picked so far, oldest first.
+    /// Geonameids, in the order the user arranged.
     saved: Vec<u32>,
-    /// Whether the saved file was there but could not be read at startup, in
-    /// which case `saved` is not what it holds and must not be written over it.
+    /// The saved file exists but could not be read, so writing `saved` over it
+    /// would lose its contents.
     saved_unreadable: bool,
-    /// The zones of the saved cities.
     zones: clock::Zones,
-    /// The geonameid a drag is carrying, while one is in flight.
+    /// The row being dragged, by geonameid.
     drag: Option<u32>,
-    /// Which of the three views the cities are shown in. Like `westward`, a
-    /// view preference that is not persisted.
+    // View preferences, deliberately not persisted.
     view: View,
-    /// Whether the list is shown ordered by longitude rather than by hand. A
-    /// view preference, deliberately not persisted.
+    /// Ordered by longitude rather than by hand.
     westward: bool,
-    /// How the times are written. Like `westward`, a view preference that is
-    /// not persisted.
     format: clock::Format,
-    /// The what-if time in effect. `None` means the rows follow the real clock.
+    /// `None` follows the real clock.
     pinned: Option<Pin>,
-    /// The row whose time is being typed over, and the input doing it.
+    /// The row being typed over, and its input.
     editing: Option<(u32, Entity<TextInput>)>,
-    /// Where the saved list has scrolled to. Doubles as the list's on-screen
-    /// bounds, which the scrollbar reads.
+    /// Doubles as the list's bounds, which the scrollbar reads.
     saved_scroll: ScrollHandle,
-    /// The world's coastlines, read once. The map's canvas closures outlive the
-    /// borrow that built them, so they take a handle rather than a reference.
+    /// Shared because the map's canvas closures outlive the render borrow.
     land: Rc<Vec<Vec<geo::LonLat>>>,
-    /// The borders between time zones, read once and held the same way as
-    /// `land`.
+    /// Shared for the same reason as `land`.
     zone_borders: Rc<Vec<Vec<geo::LonLat>>>,
-    /// Where the map last drew itself. The canvas is the only thing that knows
-    /// the letterbox, and it settles during prepaint; whatever is laid over the
-    /// map reads it back from here.
+    /// Written by the map canvas in prepaint, the only place the letterbox is
+    /// known, for whatever is laid over the map to read back.
     map_layout: Rc<Cell<Option<map::Layout>>>,
-    /// How far the map has scrolled sideways, while it is wider than the region.
     map_scroll: ScrollHandle,
-    /// How far the grid's columns have scrolled sideways.
     grid_scroll: ScrollHandle,
-    /// How far down the day the grid's hours have scrolled.
+    /// The grid's vertical scroll through the day.
     grid_hours: ScrollHandle,
-    /// Whether the hours have been scrolled to the shown instant since the
-    /// grid was last shown. Set from the grid's canvas, which outlives the
-    /// borrow that built it, so it is shared.
+    /// Whether the hours have scrolled to the shown instant since the grid
+    /// opened. Shared because the grid's canvas sets it.
     grid_at_now: Rc<Cell<bool>>,
     /// Wheel motion over the map that has not yet added up to a whole notch.
     scrub_carry: f32,
-    /// The mono face the time column reads in, if the system has one.
+    /// The system's mono face for the times, if it has one.
     mono: Option<SharedString>,
-    /// The clock, kept alive for as long as the window is.
+    /// Dropping it stops the clock.
     _tick: Task<()>,
 }
 
@@ -157,7 +138,7 @@ impl Elsewhere {
         let mut saved = loaded.unwrap_or_default();
         // A regenerated dataset may have dropped a city saved by an older run.
         saved.retain(|id| index.city(*id).is_some());
-        // Resolved up front, so rows restored from disk show a time straight away.
+        // Up front, so restored rows show a time on the first frame.
         let mut zones = clock::Zones::new();
         for geonameid in &saved {
             if let Some(city) = index.city(*geonameid) {
@@ -224,9 +205,8 @@ impl Elsewhere {
         cx.notify();
     }
 
-    /// Moves the shown instant `steps` quarter hours, later when positive. A
-    /// step has no row behind it, so it keeps whatever anchor a pin already
-    /// carries and otherwise takes none, which reads as here.
+    /// Moves the shown instant `steps` quarter hours. A step has no row behind
+    /// it, so it keeps any anchor already pinned and otherwise reads as here.
     pub(super) fn nudge(&mut self, steps: i64, cx: &mut Context<Self>) {
         let anchor = self.pinned.as_ref().and_then(|pin| pin.anchor);
         let from = match &self.pinned {
@@ -240,17 +220,15 @@ impl Elsewhere {
         cx.notify();
     }
 
-    /// A step from the keys. An open editor would go on showing what was
-    /// typed rather than the time stepped to, so it goes first.
+    /// An open editor would keep showing the typed time, so it closes first.
     fn step(&mut self, steps: i64, window: &mut Window, cx: &mut Context<Self>) {
         self.close_editor(window, cx);
         self.nudge(steps, cx);
     }
 }
 
-/// `at` with its seconds and any odd minutes dropped, so stepping from the
-/// real clock lands on a round quarter rather than carrying the current second
-/// along forever.
+/// Truncated to the quarter hour, so steps from the real clock land on round
+/// times.
 fn quarter_hour(at: &Zoned) -> Zoned {
     at.round(
         ZonedRound::new()
@@ -261,8 +239,7 @@ fn quarter_hour(at: &Zoned) -> Zoned {
     .expect("a quarter hour is a valid rounding increment")
 }
 
-/// Re-renders on every minute boundary, so the shown times stay honest without
-/// waking the app up in between.
+/// Re-renders on each minute boundary rather than polling.
 fn tick(cx: &mut Context<Elsewhere>) -> Task<()> {
     cx.spawn(async move |this, cx| {
         loop {
@@ -286,15 +263,13 @@ impl Render for Elsewhere {
             self.drag = None;
         }
 
-        // One reading of the clock for the whole pass, so the rows agree. A
-        // pinned instant stands in for the clock wholesale, which is the whole
-        // feature: every row simply renders that moment instead of this one.
+        // One reading for the whole pass, so the rows agree. A pin simply
+        // stands in for the clock.
         let now = self
             .pinned
             .as_ref()
             .map_or_else(Zoned::now, |pin| pin.at.clone());
-        // The westward view is derived here and nowhere else: the stored order
-        // stays the one the user arranged by hand.
+        // Derived here so the stored order stays the hand-arranged one.
         let order: Vec<u32> = if self.westward {
             saved::westward(
                 self.saved
@@ -330,9 +305,8 @@ impl Render for Elsewhere {
             .child(self.render_titlebar(window, cx))
             .child(self.picker.clone())
             .children(self.render_banner(&now, cx))
-            // The rows scroll on their own, so the input and toolbar above stay
-            // put however long the list grows. `min_h_0` is what lets this flex
-            // child shrink below its content and actually overflow.
+            // Scrolls on its own so the input and toolbar stay put. `min_h_0`
+            // lets this flex child shrink below its content and overflow.
             .child(div().relative().flex_1().min_h_0().map(|region| {
                 match self.view {
                     View::Map => {

@@ -1,8 +1,7 @@
-//! Greedy label placement for map dots: each dot claims the first candidate
-//! spot that fits, in the order it was given, so earlier dots win ties over
-//! later ones rather than the layout being solved globally.
+//! Greedy label placement: each dot, in order, claims the first spot that
+//! fits, so earlier dots win rather than the layout being solved globally.
 
-/// A label's box, in the same pixel space as the dots.
+/// In the same pixel space as the dots.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct Slot {
     pub x: f32,
@@ -29,14 +28,9 @@ fn within(slot: &Slot, frame: (f32, f32)) -> bool {
     slot.x >= 0.0 && slot.y >= 0.0 && slot.right() <= frame.0 && slot.bottom() <= frame.1
 }
 
-/// Finds a spot for each dot's label, taking the dots in order and giving up on a label
-/// rather than letting it collide. `dots` are centres, `sizes` the (w, h) of each label,
-/// `radius` the dot's radius, `gap` the space between a dot's edge and its label, `frame`
-/// the (w, h) of the area whose origin is (0, 0). Candidates, in order: right of the dot
-/// (vertically centred on it), left, below (horizontally centred), above. A candidate loses
-/// if any part of it leaves the frame, overlaps a slot already placed, or overlaps any dot's
-/// disc (treat the disc as its bounding square). Returns one entry per dot, `None` when no
-/// candidate fits.
+/// Tries right, left, below, then above each dot, and gives up on a label
+/// (`None`) rather than let it leave `frame` or overlap another label or any
+/// dot, whose disc counts as its bounding square.
 pub(super) fn place(
     dots: &[(f32, f32)],
     sizes: &[(f32, f32)],

@@ -10,31 +10,29 @@ use crate::search::SearchIndex;
 use crate::theme;
 use crate::vendor::text_input::TextInput;
 
-// Keys the picker answers to. The vendored input claims none of them, so they
-// bubble up to the wrapper div carrying the "SearchPicker" context.
+// The vendored input claims none of these keys, so they bubble up to the
+// "SearchPicker" wrapper.
 actions!(search, [Confirm, Clear, MoveUp, MoveDown]);
 
-/// How many search results the picker offers at a time.
 pub(super) const RESULTS: usize = 8;
 
 pub(super) struct SearchPicker {
     input: Entity<TextInput>,
     index: Rc<SearchIndex>,
-    /// The last text seen in the input, to spot the keystrokes among the
-    /// input's other notifications.
+    /// The last text seen, to tell keystrokes from the input's other
+    /// notifications.
     query: String,
-    /// The geonameids currently offered, best first.
+    /// Geonameids, best first.
     results: Vec<u32>,
-    /// Which result is highlighted, as an index into `results`. Only meaningful
-    /// while `results` is non-empty.
+    /// Into `results`; meaningless while it is empty.
     selected: usize,
-    /// Where the results panel has scrolled to. Doubles as the panel's on-screen
-    /// bounds, which the dismiss guard and the scrollbar both read.
+    /// Doubles as the panel's bounds, which the dismiss guard and the
+    /// scrollbar read.
     scroll: ScrollHandle,
 }
 
 pub(super) enum SearchEvent {
-    /// The user chose a city; the picker has already reset itself.
+    /// The picker has already reset itself.
     Picked(u32),
 }
 
@@ -56,9 +54,8 @@ impl SearchPicker {
         }
     }
 
-    /// The input emits no change event, so this runs on every notification it
-    /// sends — cursor moves and selections included — and re-searches only when
-    /// the text itself changed.
+    /// The input has no change event, so this runs on every notification,
+    /// cursor moves included, and re-searches only when the text changed.
     fn search(&mut self, input: Entity<TextInput>, cx: &mut Context<Self>) {
         if input.read(cx).text() == self.query {
             return;
@@ -70,22 +67,19 @@ impl SearchPicker {
             .iter()
             .map(|city| city.geonameid)
             .collect();
-        // Every keystroke reshuffles the results, so the highlight goes back to
-        // the top hit: plain Enter saves the best match.
+        // Back to the top hit, so plain Enter saves the best match.
         self.selected = 0;
         cx.notify();
     }
 
-    /// Closes the results panel. `query` stays as it is: `search()` re-runs only
-    /// when the input text differs from it, so clearing it would let the next
-    /// input notification reopen the panel.
+    /// Leaves `query` alone: clearing it would let the next input notification
+    /// reopen the panel.
     fn dismiss(&mut self, cx: &mut Context<Self>) {
         self.results.clear();
         cx.notify();
     }
 
-    /// Back to an empty input and no results. `query` is cleared alongside the
-    /// input text so the two stay in step and `search()` stays quiet.
+    /// `query` is cleared with the input text so `search()` stays quiet.
     fn reset(&mut self, cx: &mut Context<Self>) {
         self.input.update(cx, |input, cx| input.reset(cx));
         self.query.clear();
@@ -93,13 +87,12 @@ impl SearchPicker {
         self.selected = 0;
     }
 
-    /// Whether the user is mid-search. The query, not the results: a dismissed
-    /// panel leaves the text in the input, and the list still sits under it.
+    /// The query, not the results: a dismissed panel leaves the text in the
+    /// input, and the list still sits under it.
     pub(super) fn searching(&self) -> bool {
         !self.query.is_empty()
     }
 
-    /// Hands the choice up and starts over on an empty input.
     fn pick(&mut self, geonameid: u32, cx: &mut Context<Self>) {
         self.reset(cx);
         cx.emit(SearchEvent::Picked(geonameid));
@@ -113,7 +106,7 @@ impl SearchPicker {
     }
 
     fn clear(&mut self, _: &Clear, _window: &mut Window, cx: &mut Context<Self>) {
-        // Nothing here to clear: let the window have the key instead.
+        // Nothing to clear, so the window gets the key.
         if self.query.is_empty() && self.results.is_empty() {
             cx.propagate();
             return;
@@ -149,8 +142,8 @@ impl Focusable for SearchPicker {
 
 impl Render for SearchPicker {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // The results float over the saved list rather than sitting in
-        // the column, so the rows below hold still while the user types.
+        // The results float over the saved list so the rows below hold still
+        // while the user types.
         div()
             .relative()
             .key_context("SearchPicker")
@@ -176,8 +169,7 @@ impl Render for SearchPicker {
                         .shadow_lg()
                         .on_mouse_down_out(cx.listener(
                             |this, event: &MouseDownEvent, _window, cx| {
-                                // Everything above the panel is the input
-                                // strip; a click there keeps the panel open.
+                                // A click on the input above keeps it open.
                                 if event.position.y < this.scroll.bounds().top() {
                                     return;
                                 }
@@ -203,19 +195,14 @@ impl Render for SearchPicker {
                                                 .px_2()
                                                 .py_1()
                                                 .rounded_md()
-                                                // One line per result, however
-                                                // long the label runs. The
-                                                // overflow that truncating
-                                                // hides also lets a flex item
-                                                // shrink below its content, so
-                                                // in a short window the rows
-                                                // would squash to fit instead
-                                                // of scrolling.
+                                                // The overflow `truncate`
+                                                // sets lets a flex item shrink
+                                                // below its content, so in a
+                                                // short window rows would
+                                                // squash instead of scrolling.
                                                 .flex_shrink_0()
                                                 .truncate()
                                                 .cursor_pointer()
-                                                // The keyboard highlight wears
-                                                // the hover look, held on.
                                                 .when(i == self.selected, |row| {
                                                     row.bg(rgb(theme::SURFACE0))
                                                 })

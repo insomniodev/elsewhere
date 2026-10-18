@@ -1,6 +1,4 @@
-//! The map view: the world painted in one canvas, land first, then its time
-//! zones and the night it is turning through, with the saved cities laid over
-//! it as divs.
+//! The world is painted in one canvas; the saved cities are divs laid over it.
 mod labels;
 mod pins;
 
@@ -16,41 +14,32 @@ use crate::clock;
 use crate::geo::{self, LonLat};
 use crate::theme;
 
-/// A meridian is marked every this many degrees along the bottom edge.
 const MERIDIAN_STEP: f64 = 15.0;
-/// How finely the terminator is sampled, in degrees of longitude. Its curve is
-/// gentle enough that this is well under a pixel of error at any window size.
+/// Degrees of longitude. The terminator is gentle enough that this is well
+/// under a pixel of error at any window size.
 const NIGHT_STEP: f64 = 2.0;
 
-/// The time zone borders' stroke.
 const ZONE_LINE_WIDTH: Pixels = px(1.);
-/// The offsets along the bottom edge: their size, the line they sit in, and
-/// how far they stand above the meridian ticks.
 const OFFSET_SIZE: Pixels = px(10.);
 const OFFSET_LINE: Pixels = px(12.);
 const OFFSET_GAP: Pixels = px(2.);
-/// The meridian ticks' height.
 const TICK: Pixels = px(3.);
 
-/// The sun's mark: a disc with rays around it, so it never reads as one of
-/// the cities' plain dots. The rays' count, where they start and end out from
-/// the centre, and their stroke.
+/// The sun has rays so it never reads as one of the cities' plain dots.
 const SUN_RADIUS: Pixels = px(2.5);
 const SUN_RAYS: usize = 8;
 const RAY_FROM: f32 = 4.0;
 const RAY_TO: f32 = 6.5;
 const RAY_WIDTH: Pixels = px(1.);
 
-/// What counts as a notch when the wheel reports exact pixels, as a trackpad
-/// does. Roughly the distance a mouse wheel's click carries.
+/// A notch for wheels that report pixels, as a trackpad does. Roughly what a
+/// mouse wheel's click carries.
 const NOTCH_PIXELS: f32 = 40.0;
 
-/// How far below the map's bottom edge the sideways scrollbar hangs.
 const SCROLLBAR_GAP: Pixels = px(4.);
 
-/// How the map last laid itself out: the region it was given, and the rect it
-/// drew in, whose origin is relative to the scrolled content. The rect is wider
-/// than the viewport when the map is scrolling sideways.
+/// `rect` is relative to the scrolled content, and wider than `viewport` when
+/// the map scrolls sideways.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct Layout {
     pub viewport: Size<Pixels>,
@@ -64,14 +53,11 @@ impl Layout {
 }
 
 impl Elsewhere {
-    /// Where the map last drew itself, in the coordinates of the content it
-    /// scrolls with. `None` until the first frame has been laid out.
+    /// `None` until the first frame has been laid out.
     pub(super) fn map_rect(&self) -> Option<Bounds<Pixels>> {
         self.map_layout.get().map(|layout| layout.rect)
     }
 
-    /// The map region: the world, the cities on it, and the wheel that scrubs
-    /// the shown instant.
     pub(super) fn render_map(
         &self,
         saved: &[u32],
@@ -90,9 +76,8 @@ impl Elsewhere {
                     .size_full()
                     .overflow_x_scroll()
                     .track_scroll(&self.map_scroll)
-                    // Left to itself gpui would turn a plain wheel into a
-                    // sideways scroll here; that gesture is the time scrub, and
-                    // the platform already reports shift+wheel as sideways.
+                    // Otherwise gpui turns a plain wheel sideways here, but
+                    // that is the time scrub; shift+wheel already scrolls.
                     .map(|mut scroller| {
                         scroller.style().restrict_scroll_to_axis = Some(true);
                         scroller
@@ -101,8 +86,6 @@ impl Elsewhere {
                         this.scrub(event, cx)
                     }))
                     .child(
-                        // The scrolled content: as wide as the map when that
-                        // is wider than the region, otherwise the region.
                         div()
                             .relative()
                             .h_full()
@@ -121,9 +104,8 @@ impl Elsewhere {
             })
     }
 
-    /// The longitude the map centres on when it first becomes wider than the
-    /// region: the reader's own city if one is saved, else the first saved
-    /// city, else Greenwich.
+    /// Where the map centres when it first overflows: the reader's own city if
+    /// saved, else the first saved city, else Greenwich.
     fn focus(&self) -> f64 {
         let now = Zoned::now();
         let home = now.time_zone().iana_name();
@@ -138,16 +120,14 @@ impl Elsewhere {
             .map_or(0.0, |city| city.longitude)
     }
 
-    /// Wheel over the map: a notch down is a quarter hour later, the way the
-    /// night moves. The result is an ordinary pin, so the banner, the rows and
-    /// the shade all follow it and escape still undoes it.
+    /// A notch down is a quarter hour later, the way the night moves. It is an
+    /// ordinary pin, so everything follows it and escape undoes it.
     fn scrub(&mut self, event: &ScrollWheelEvent, cx: &mut Context<Self>) {
         let notches = match event.delta {
             ScrollDelta::Lines(lines) => lines.y,
             ScrollDelta::Pixels(pixels) => f32::from(pixels.y) / NOTCH_PIXELS,
         };
-        // A trackpad arrives as a stream of small deltas, so what does not add
-        // up to a whole notch waits here for the next one.
+        // A trackpad sends small deltas; carry the fraction to the next one.
         let carried = self.scrub_carry + notches;
         self.scrub_carry = carried.fract();
         let notches = carried.trunc();
@@ -155,8 +135,7 @@ impl Elsewhere {
             return;
         }
 
-        // Scrolling down pushes the content up, which the wheel reports as a
-        // negative delta; that is the gesture that should move time forward.
+        // Scrolling down reports a negative delta; it should move time forward.
         self.nudge(-(notches as i64), cx);
     }
 
@@ -170,9 +149,8 @@ impl Elsewhere {
 
         canvas(
             move |bounds, window, _cx| {
-                // The canvas fills the scrolled content, which may already be
-                // wider than the region; the letterbox is fitted to the region,
-                // which the scroller has measured by now.
+                // Fit to the region, not the canvas, which may already be
+                // wider. The scroller has measured it by now.
                 let viewport = scroll.bounds().size;
                 let rect = fit(viewport);
                 let layout = Layout { viewport, rect };
@@ -180,17 +158,14 @@ impl Elsewhere {
                 if before != Some(layout) {
                     remembered.set(Some(layout));
                     if layout.overflows() {
-                        // Where along the map the middle of the region falls,
-                        // as a fraction of its width.
                         let middle = match before.filter(Layout::overflows) {
-                            // Already scrolling: keep whatever longitude was
-                            // in the middle through the resize.
+                            // Keep the middle longitude through the resize.
                             Some(before) => {
                                 (before.viewport.width / 2. - scroll.offset().x)
                                     / before.rect.size.width
                             }
-                            // Just grown past the region: start on the
-                            // reader's own longitude rather than the Pacific.
+                            // Just overflowed: start on the reader's own
+                            // longitude rather than the Pacific.
                             None => {
                                 geo::project(LonLat {
                                     lon: focus,
@@ -204,9 +179,9 @@ impl Elsewhere {
                             (rect.size.width * middle - viewport.width / 2.).clamp(px(0.), most);
                         scroll.set_offset(point(-left, px(0.)));
                     }
-                    // What goes over the map is positioned from this rect, so
-                    // the frame that first measures it is already stale. A
-                    // plain refresh is ignored mid-draw; this one lands.
+                    // The overlay was placed from the old rect, so this frame
+                    // is stale. A plain refresh is ignored mid-draw; this one
+                    // lands.
                     window.request_animation_frame();
                 }
                 Bounds {
@@ -249,8 +224,8 @@ impl Elsewhere {
                     lon += MERIDIAN_STEP;
                 }
 
-                // Over the ticks, where the bottom edge runs through open
-                // ocean and the zones are the plain nautical ones.
+                // The bottom edge runs through open ocean, where the zones are
+                // the plain nautical ones.
                 let font = window.text_style().font();
                 for (lon, hours) in offset_marks() {
                     let text = clock::offset_label(jiff::tz::offset(hours));
@@ -274,9 +249,8 @@ impl Elsewhere {
                     line.paint(origin, OFFSET_LINE, window, cx).ok();
                 }
 
-                // The sun only ever stands between the tropics, but the crop is
-                // an editable constant and clamping would park the mark on an
-                // edge it never actually reaches.
+                // The crop is an editable constant, and clamping would park
+                // the sun on an edge it never reaches.
                 if (geo::SOUTH..=geo::NORTH).contains(&sun.lat) {
                     let centre = at(sun);
                     window.paint_quad(
@@ -299,11 +273,8 @@ impl Elsewhere {
     }
 }
 
-/// The letterbox: a rect of `geo::aspect()` as tall as `area`, with an origin
-/// relative to it. The window is a tall shape first, so the map takes the
-/// height it is given: centred across the area when that leaves it narrower,
-/// which is the whole world at a glance, and flush left when it comes out
-/// wider, for the scroller to carry sideways.
+/// The window is tall first, so the map takes the full height: centred when
+/// that leaves it narrower than `area`, flush left for the scroller when wider.
 pub(super) fn fit(area: Size<Pixels>) -> Bounds<Pixels> {
     let width = area.height * geo::aspect() as f32;
     Bounds::new(
@@ -312,8 +283,7 @@ pub(super) fn fit(area: Size<Pixels>) -> Bounds<Pixels> {
     )
 }
 
-/// A closed filled path through `points`, or `None` for a run too short to
-/// enclose anything or one lyon cannot tessellate.
+/// `None` for too few points or a path lyon cannot tessellate.
 fn polygon(points: impl Iterator<Item = Point<Pixels>>) -> Option<Path<Pixels>> {
     let points: Vec<_> = points.collect();
     if points.len() < 3 {
@@ -324,8 +294,7 @@ fn polygon(points: impl Iterator<Item = Point<Pixels>>) -> Option<Path<Pixels>> 
     builder.build().ok()
 }
 
-/// A stroke through `points`, or `None` for a run too short to be a line or
-/// one lyon cannot tessellate.
+/// `None` for too few points or a path lyon cannot tessellate.
 fn polyline(points: impl Iterator<Item = Point<Pixels>>) -> Option<Path<Pixels>> {
     let points: Vec<_> = points.collect();
     if points.len() < 2 {
@@ -336,8 +305,6 @@ fn polyline(points: impl Iterator<Item = Point<Pixels>>) -> Option<Path<Pixels>>
     builder.build().ok()
 }
 
-/// The sun's rays around `centre`, one stroke each, or `None` if lyon cannot
-/// tessellate them.
 fn rays(centre: Point<Pixels>) -> Option<Path<Pixels>> {
     let mut builder = PathBuilder::stroke(RAY_WIDTH);
     for ray in 0..SUN_RAYS {
@@ -349,9 +316,8 @@ fn rays(centre: Point<Pixels>) -> Option<Path<Pixels>> {
     builder.build().ok()
 }
 
-/// Where each offset label goes along the bottom edge, and the whole hours it
-/// reads: the middle of each 15° nautical zone, which is a meridian tick,
-/// except at the date line, where ±12 each get half a zone.
+/// Each label sits mid nautical zone, on a meridian tick, except ±12, which
+/// share the zone split by the date line.
 fn offset_marks() -> impl Iterator<Item = (f64, i8)> {
     let half = MERIDIAN_STEP / 4.0;
     (-11..=11)

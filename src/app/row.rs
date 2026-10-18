@@ -10,37 +10,29 @@ use crate::clock;
 use crate::theme;
 use crate::vendor::text_input::TextInput;
 
-/// Width of the time column. Fixed so the reading and the what-if editor
-/// occupy the same box, and so a row does not reflow as its digits change.
-/// Sized to the format's longest reading in a 0.6em mono at 16px plus the
-/// vendored input's 6px of padding either side, so the editor hugs the digits
-/// rather than leaving slack on its right; every face on the mono list is
-/// that width.
+/// Fixed so the reading and the editor share a box and a row does not reflow
+/// as its digits change. The longest reading in a 0.6em mono at 16px, which
+/// every face on the list is, plus the vendored input's 6px padding either
+/// side, so the editor hugs the digits.
 fn time_width(format: clock::Format) -> Pixels {
     px(format.glyphs() as f32 * 9.6 + 12.)
 }
 
-/// Height of the time column, and with it the row. This is the box the
-/// vendored input renders at, reserved whether or not the editor is open, so
-/// that opening one does not push the rest of the list down. The row is taller
-/// than its text needs as a result; the honest fix is a shorter input.
+/// Also the row's height: the vendored input's, reserved even while it is
+/// closed so opening it does not push the list down. The honest fix is a
+/// shorter input.
 const TIME_HEIGHT: Pixels = px(36.);
 
-/// The row's left inset, so the label does not sit flush against the hover
-/// wash's edge. The wash itself starts at the column edge, in line with the
-/// search bar: it cannot hang out into the window padding, because the list
-/// is a scroll container and clips to its own bounds on both axes, which
-/// would square off the row's left corners.
+/// The label's inset from the hover wash's edge. The wash cannot hang out
+/// into the window padding: the list is a scroll container and clips on both
+/// axes, which would square off the row's left corners.
 const WASH: Pixels = px(8.);
 
-/// The space either side of the rule between two rows.
+/// Either side of the rule between rows.
 const GAP: Pixels = px(6.);
 
-/// Mono faces for the time column, best first. Equal-width digits keep a
-/// reading from shifting as it ticks, which tabular figures would also do,
-/// except that `tnum` is missing from several of the sans faces gpui falls
-/// back to and there is no way to ask for the feature without naming a family
-/// anyway.
+/// Best first. Mono rather than `tnum`, which several of gpui's fallback sans
+/// faces lack, and which cannot be asked for without naming a family anyway.
 const MONO: [&str; 8] = [
     "JetBrains Mono",
     "IBM Plex Mono",
@@ -52,10 +44,8 @@ const MONO: [&str; 8] = [
     "Liberation Mono",
 ];
 
-/// Settles on the time column's face once, at startup. gpui matches a family
-/// name exactly and quietly drops back to the UI font when it misses, so the
-/// list is checked against what the system actually carries. `None` leaves the
-/// column proportional, which is no worse than not asking.
+/// gpui matches a family name exactly and silently falls back to the UI font,
+/// so the list is checked against what is installed.
 pub(super) fn mono(cx: &App) -> Option<SharedString> {
     let installed = cx.text_system().all_font_names();
     MONO.iter()
@@ -77,8 +67,8 @@ impl Elsewhere {
         cx.notify();
     }
 
-    /// Opens the what-if editor on a row's time. The current reading rides
-    /// along as the placeholder, since the input cannot be prefilled.
+    /// The current reading goes in as the placeholder, since the input cannot
+    /// be prefilled.
     pub(super) fn edit(
         &mut self,
         geonameid: u32,
@@ -93,8 +83,8 @@ impl Elsewhere {
         cx.notify();
     }
 
-    /// Re-pins on every keystroke in the editor that reads as a time, so the
-    /// other rows follow along while the user types.
+    /// Re-pins on each keystroke that reads as a time, so the other rows
+    /// follow as the user types.
     fn retime(&mut self, input: Entity<TextInput>, cx: &mut Context<Self>) {
         let Some((geonameid, editor)) = &self.editing else {
             return;
@@ -114,28 +104,24 @@ impl Elsewhere {
         }
     }
 
-    /// Enter: the pin, if any, stays; the editor goes.
+    /// Keeps any pin; only the editor goes.
     fn commit(&mut self, _: &Commit, window: &mut Window, cx: &mut Context<Self>) {
         self.close_editor(window, cx);
     }
 
-    /// Escape: back to the live clock.
     fn cancel(&mut self, _: &Cancel, window: &mut Window, cx: &mut Context<Self>) {
         self.pinned = None;
         self.close_editor(window, cx);
     }
 
-    /// Drops the editor and hands focus back to the search input.
     pub(super) fn close_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.editing = None;
         window.focus(&self.picker.focus_handle(cx));
         cx.notify();
     }
 
-    /// The what-if editor in the box the time column reserves for it. Enter
-    /// and escape fall through the vendored input, so the wrapper carries the
-    /// context that catches them. Shared with the map, which opens the same
-    /// editor on a label's time.
+    /// Enter and escape fall through the vendored input, so the wrapper
+    /// carries the context that catches them. The map opens the same editor.
     pub(super) fn render_editor(&self, input: &Entity<TextInput>, cx: &mut Context<Self>) -> Div {
         div()
             .key_context("PinEditor")
@@ -147,8 +133,6 @@ impl Elsewhere {
             .child(input.clone())
     }
 
-    /// What the list shows while there is nothing in it: a hint, sat where the
-    /// first row's label would be.
     pub(super) fn render_empty(&self) -> impl IntoElement + use<> {
         div()
             .h(TIME_HEIGHT)
@@ -159,8 +143,8 @@ impl Elsewhere {
             .child("search for a city to start your list")
     }
 
-    /// The `use<>` says the row borrows none of the arguments, which is what
-    /// lets `render` build the list inside a closure that holds `cx`.
+    /// `use<>`: the row borrows none of the arguments, so `render` can build
+    /// the list inside a closure that holds `cx`.
     pub(super) fn render_row(
         &self,
         geonameid: u32,
@@ -182,13 +166,10 @@ impl Elsewhere {
             Some(reading) => (reading.time, reading.day),
             None => (clock::UNKNOWN.to_string(), None),
         };
-        // The rule that separates a row from the one above doubles as the
-        // insertion line: it lights up, and a drop lands, only in the
-        // hand-arranged order; the westward order does not reorder, but a row
-        // can still be dragged out of it to the bin. The first row wears the
-        // rule too, transparent, so a drop before it still has a line to show.
-        // The same inset sits either side of every rule, and none at the
-        // list's ends, where there is no rule to space from.
+        // The rule above a row doubles as the insertion line, live only in the
+        // hand-arranged order; westward rows can still be dragged to the bin.
+        // The first row wears it transparent, so a drop before it has a line
+        // to show. No inset at the list's ends, with nothing to space from.
         let target = drop_target(div(), !self.westward)
             .when(!first, |row| row.border_color(rgb(theme::SURFACE0)))
             .py(GAP)
@@ -210,8 +191,7 @@ impl Elsewhere {
                     .pl(WASH)
                     .rounded_md()
                     .hover(|style| style.bg(rgba(theme::WASH)))
-                    // The whole row is the handle: there is no grip to find, and
-                    // the cursor says so on hover.
+                    // The whole row is the handle; there is no grip.
                     .cursor_grab()
                     .on_drag(
                         DragRow {
@@ -223,11 +203,9 @@ impl Elsewhere {
                     .when(dragging && self.drag == Some(geonameid), |row| {
                         row.opacity(0.4)
                     })
-                    // `flex_1` on its own is not enough: a flex item's automatic
-                    // minimum is its own content, so a long label would hold the
-                    // row open and shove the time and the x past the right edge.
-                    // `min_w_0` lets the label give way instead, and truncate ends
-                    // it in an ellipsis rather than wrapping out of the row.
+                    // A flex item's automatic minimum is its content, so a long
+                    // label would shove the time past the right edge. `min_w_0`
+                    // lets it give way and truncate instead.
                     .child(
                         div()
                             .flex_1()
@@ -243,11 +221,9 @@ impl Elsewhere {
                         Some((editing, input)) if *editing == geonameid => {
                             self.render_editor(input, cx).into_any_element()
                         }
-                        // The cell is fixed so the column lines up; the pill inside
-                        // wraps the digits, so the hover wash sits under them
-                        // rather than under the empty half of a right-aligned cell.
-                        // It runs the cell's full height, so the hover look is the
-                        // same box the editor opens into.
+                        // The cell is fixed so the column lines up; the pill
+                        // hugs the digits so the hover wash sits under them, at
+                        // the full height the editor opens into.
                         _ => div()
                             .w(time_width(self.format))
                             .h(TIME_HEIGHT)
