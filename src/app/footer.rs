@@ -1,6 +1,7 @@
-use gpui::{Context, Pixels, Window, div, prelude::*, px, rgb, rgba, svg, transparent_black};
+use gpui::{Context, Pixels, Window, div, prelude::*, px, rgb, rgba};
 use jiff::Zoned;
 
+use super::button::Button;
 use super::drag::DragRow;
 use super::tooltip::Tooltip;
 use super::{Elsewhere, View};
@@ -17,6 +18,10 @@ struct Toggle {
     tips: [&'static str; 2],
     /// A plain fn, so the element can outlive the borrow that built it.
     click: fn(&mut Elsewhere, &mut Window, &mut Context<Elsewhere>),
+    on: fn(&Elsewhere) -> bool,
+    /// Why it does nothing now, when it doesn't apply. It stays in its slot
+    /// either way, so the controls never jump between views.
+    unavailable: fn(&Elsewhere) -> Option<&'static str>,
 }
 
 const FORMAT: Toggle = Toggle {
@@ -25,6 +30,13 @@ const FORMAT: Toggle = Toggle {
     size: px(14.),
     tips: ["show 12-hour time", "showing 12-hour time"],
     click: Elsewhere::toggle_format,
+    on: |this| this.format == Format::Twelve,
+    // Any view that shows a time takes it; of the empty ones only the grid
+    // does (its "here" column), and the map's pins and the list's rows are
+    // the cities.
+    unavailable: |this| {
+        (this.saved.is_empty() && this.view != View::Grid).then_some("add a city first")
+    },
 };
 
 struct Segment {
@@ -62,6 +74,16 @@ const WESTWARD: Toggle = Toggle {
     size: px(16.),
     tips: ["order west to east", "ordered west to east"],
     click: Elsewhere::toggle_westward,
+    on: |this| this.westward,
+    unavailable: |this| {
+        if this.view == View::Map {
+            Some("no order on a map")
+        } else if this.saved.len() < 2 {
+            Some("add a city first")
+        } else {
+            None
+        }
+    },
 };
 
 impl Elsewhere {
@@ -97,8 +119,7 @@ impl Elsewhere {
 
     fn render_toggle(
         &self,
-        toggle: &Toggle,
-        on: bool,
+        toggle: &'static Toggle,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let Toggle {
@@ -107,34 +128,18 @@ impl Elsewhere {
             size,
             tips,
             click,
+            on,
+            unavailable,
         } = *toggle;
-        div()
-            .id(id)
-            .w_7()
-            .h_5()
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded_md()
-            // Invisible, so the icon sits in the same box as the bin's inside
-            // its dashed one.
-            .border_1()
-            .border_color(transparent_black())
-            .cursor_pointer()
-            .hover(|style| style.bg(rgb(theme::SURFACE0)))
-            .tooltip(Tooltip::text(tips[on as usize]))
+        let reason = unavailable(self);
+        Button::new(id, icon, size)
+            .on(on(self))
+            .disabled(reason.is_some())
+            .tooltip(Tooltip::live(cx.entity(), move |this| {
+                unavailable(this).unwrap_or(tips[on(this) as usize]).into()
+            }))
             .on_click(cx.listener(move |this, _event, window, cx| click(this, window, cx)))
-            .child(
-                svg()
-                    .path(icon)
-                    .size(size)
-                    // An svg does not inherit its parent's color.
-                    .text_color(if on {
-                        rgb(theme::BLUE)
-                    } else {
-                        rgb(theme::OVERLAY2)
-                    }),
-            )
+            .build()
     }
 
     /// Each segment keeps the toggles' box, so the icons line up with the bin
@@ -152,38 +157,17 @@ impl Elsewhere {
                     icon,
                     tips,
                 } = *segment;
-                let on = self.view == view;
-                div()
-                    .id(id)
-                    .w_7()
-                    .h_5()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded_md()
-                    .border_1()
-                    .border_color(transparent_black())
-                    .when(on, |segment| segment.bg(rgb(theme::SURFACE0)))
-                    .when(!on, |segment| {
-                        segment
-                            .cursor_pointer()
-                            .hover(|style| style.bg(rgba(theme::WASH)))
-                    })
-                    .tooltip(Tooltip::text(tips[on as usize]))
+                Button::new(id, icon, px(16.))
+                    .on(self.view == view)
+                    .current(self.view == view)
+                    .wash(rgba(theme::WASH))
+                    .tooltip(Tooltip::live(cx.entity(), move |this| {
+                        tips[(this.view == view) as usize].into()
+                    }))
                     .on_click(
                         cx.listener(move |this, _event, window, cx| this.switch(view, window, cx)),
                     )
-                    .child(
-                        svg()
-                            .path(icon)
-                            .size_4()
-                            // An svg does not inherit its parent's color.
-                            .text_color(if on {
-                                rgb(theme::BLUE)
-                            } else {
-                                rgb(theme::OVERLAY2)
-                            }),
-                    )
+                    .build()
             }))
     }
 
@@ -249,36 +233,16 @@ impl Elsewhere {
         )
     }
 
-    /// Dashed so it reads as a place to drop rather than a button.
     fn render_bin(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .id("bin")
-            .w_7()
-            .h_5()
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded_md()
-            .border_1()
-            .border_dashed()
-            .border_color(rgb(theme::OVERLAY2))
-            .drag_over::<DragRow>(|style, _, _, _| {
-                style
-                    .border_color(rgb(theme::BLUE))
-                    .bg(rgb(theme::SURFACE0))
-            })
+        Button::new("bin", "icons/trash.svg", px(14.))
+            .rest(theme::SUBTEXT0)
+            .dashed(theme::OVERLAY2)
+            .drop_target::<DragRow>()
+            .build()
             .on_drop(
                 cx.listener(|this, row: &DragRow, window, cx| {
                     this.delete(row.geonameid, window, cx)
                 }),
-            )
-            .child(
-                svg()
-                    .path("icons/trash.svg")
-                    .size_3p5()
-                    // An svg does not inherit its parent's color.
-                    .text_color(rgb(theme::SUBTEXT0))
-                    .drag_over::<DragRow>(|style, _, _, _| style.text_color(rgb(theme::BLUE))),
             )
     }
 
@@ -290,7 +254,7 @@ impl Elsewhere {
             .flex_row()
             .justify_between()
             .items_center()
-            .h_5()
+            .h_6()
             .text_xs()
             .child(
                 div()
@@ -305,16 +269,8 @@ impl Elsewhere {
                     .flex()
                     .flex_row()
                     .gap_1()
-                    .children(
-                        (!self.saved.is_empty()).then(|| {
-                            self.render_toggle(&FORMAT, self.format == Format::Twelve, cx)
-                        }),
-                    )
-                    // A map has no order to choose.
-                    .children(
-                        (self.saved.len() > 1 && self.view != View::Map)
-                            .then(|| self.render_toggle(&WESTWARD, self.westward, cx)),
-                    ),
+                    .child(self.render_toggle(&FORMAT, cx))
+                    .child(self.render_toggle(&WESTWARD, cx)),
             )
     }
 }

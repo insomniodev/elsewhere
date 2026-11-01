@@ -1,12 +1,12 @@
 //! gpui shows whatever view a tooltip builder returns; this is the one all of
 //! ours use.
 
-use gpui::{AnyView, App, Render, SharedString, Window, div, prelude::*, rgb};
+use gpui::{AnyView, App, Entity, Render, SharedString, Window, div, prelude::*, rgb};
 
 use crate::theme;
 
 pub(super) struct Tooltip {
-    text: SharedString,
+    text: Box<dyn Fn(&App) -> SharedString>,
 }
 
 impl Tooltip {
@@ -16,13 +16,31 @@ impl Tooltip {
         let text = text.into();
         move |_window, cx| {
             let text = text.clone();
-            cx.new(|_| Tooltip { text }).into()
+            cx.new(|_| Tooltip {
+                text: Box::new(move |_| text.clone()),
+            })
+            .into()
+        }
+    }
+
+    /// Reads its text from `owner` on every frame, since gpui builds the view
+    /// once per hover and a click can change what the control would say.
+    pub(super) fn live<T: 'static>(
+        owner: Entity<T>,
+        text: impl Fn(&T) -> SharedString + Clone + 'static,
+    ) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
+        move |_window, cx| {
+            let (owner, text) = (owner.clone(), text.clone());
+            cx.new(|_| Tooltip {
+                text: Box::new(move |cx| text(owner.read(cx))),
+            })
+            .into()
         }
     }
 }
 
 impl Render for Tooltip {
-    fn render(&mut self, _window: &mut Window, _cx: &mut gpui::Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut gpui::Context<Self>) -> impl IntoElement {
         div()
             .px_1p5()
             .py_0p5()
@@ -32,6 +50,6 @@ impl Render for Tooltip {
             .bg(rgb(theme::MANTLE))
             .text_xs()
             .text_color(rgb(theme::SUBTEXT0))
-            .child(self.text.clone())
+            .child((self.text)(cx))
     }
 }

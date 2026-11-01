@@ -7,6 +7,7 @@ use gpui::{
 };
 use jiff::{RoundMode, Span, Unit, Zoned, ZonedRound};
 
+mod button;
 mod drag;
 mod footer;
 mod grid;
@@ -298,7 +299,7 @@ impl Render for Elsewhere {
             .gap_3()
             // The title bar sits in what would be the top padding.
             .px_4()
-            .pt_2()
+            .pt_1()
             .pb_4()
             .bg(rgb(theme::BASE))
             .text_color(rgb(theme::TEXT))

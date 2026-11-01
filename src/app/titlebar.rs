@@ -1,9 +1,10 @@
 use gpui::{
     Context, MouseButton, MouseDownEvent, Pixels, Point, Window, WindowControlArea, div, point,
-    prelude::*, px, rgb, svg, transparent_black,
+    prelude::*, px, rgb,
 };
 
 use super::Elsewhere;
+use super::button::Button;
 use crate::theme;
 
 /// The title bar looks the same everywhere, but what moves the window and
@@ -33,7 +34,7 @@ impl Chrome {
 }
 
 /// In line with the padding, centered on the title bar.
-pub(crate) const MAC_TRAFFIC_LIGHTS: Point<Pixels> = point(px(16.), px(11.));
+pub(crate) const MAC_TRAFFIC_LIGHTS: Point<Pixels> = point(px(16.), px(9.));
 /// The lights' width plus a gap before the name.
 const MAC_TRAFFIC_LIGHTS_ROOM: Pixels = px(62.);
 
@@ -94,37 +95,17 @@ impl Elsewhere {
             area,
             click,
         } = *control;
-        div()
-            .id(id)
-            .group(id)
-            .w_7()
-            .h_5()
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded_md()
-            // Invisible, as on the footer's buttons, so the icons share a box.
-            .border_1()
-            .border_color(transparent_black())
-            .cursor_pointer()
-            .hover(|style| style.bg(rgb(theme::SURFACE0)))
-            .map(|button| match Chrome::CURRENT {
-                // Windows acts on the press as its own caption button, so a
-                // click handler would act twice. This also gives maximize its
-                // snap layouts.
-                Chrome::Windows => button.window_control_area(area),
-                Chrome::Mac | Chrome::Linux => {
-                    button.on_click(cx.listener(move |_, _event, window, cx| click(window, cx)))
-                }
-            })
-            .child(
-                svg()
-                    .path(icon)
-                    .size(size)
-                    // An svg does not inherit its parent's color.
-                    .text_color(rgb(theme::OVERLAY2))
-                    .group_hover(id, |style| style.text_color(rgb(hover))),
-            )
+        let button = Button::new(id, icon, size).hover(hover);
+        match Chrome::CURRENT {
+            // Windows acts on the press as its own caption button, so a click
+            // handler would act twice. This also gives maximize its snap
+            // layouts.
+            Chrome::Windows => button.area(area),
+            Chrome::Mac | Chrome::Linux => {
+                button.on_click(cx.listener(move |_, _event, window, cx| click(window, cx)))
+            }
+        }
+        .build()
     }
 
     /// Stands in for the title bar the window goes without.
@@ -144,7 +125,7 @@ impl Elsewhere {
             .flex()
             .flex_row()
             .items_center()
-            .h_5()
+            .h_6()
             // The name sits in the drag strip, so it moves the window too.
             .child(
                 div()
