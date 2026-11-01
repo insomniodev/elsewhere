@@ -2,8 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use gpui::{
-    App, Application, Bounds, KeyBinding, TitlebarOptions, WindowBounds, WindowDecorations,
-    WindowOptions, prelude::*, px, size,
+    App, Application, Bounds, KeyBinding, Pixels, Size, TitlebarOptions, WindowBounds,
+    WindowDecorations, WindowOptions, prelude::*, px, size,
 };
 
 mod app;
@@ -15,9 +15,42 @@ mod hours;
 mod land;
 mod saved;
 mod search;
+mod settings;
 mod theme;
 mod vendor;
 mod zones;
+
+/// Tall, to suit the list; the map scrolls sideways instead. Under 600 so it
+/// fits a 1200-pixel display at 2x.
+const SIZE: Size<Pixels> = size(px(400.), px(560.));
+
+/// Narrower and a row cannot hold a name and a time; shorter and the search
+/// has no room for results.
+const MIN_SIZE: Size<Pixels> = size(px(320.), px(360.));
+
+/// Where the last session left the window. A saved place that no display shows
+/// any part of (one since unplugged) starts over centred at the default size.
+fn bounds(settings: Option<&settings::Settings>, cx: &App) -> Bounds<Pixels> {
+    let Some(saved) = settings.and_then(|settings| settings.size) else {
+        return Bounds::centered(None, SIZE, cx);
+    };
+    let size = saved.max(&MIN_SIZE);
+    let Some(origin) = settings.and_then(|settings| settings.origin) else {
+        return Bounds::centered(None, size, cx);
+    };
+    let bounds = Bounds { origin, size };
+    let displays = cx.displays();
+    // No displays known means nothing to check against.
+    if displays.is_empty()
+        || displays
+            .iter()
+            .any(|display| display.bounds().intersects(&bounds))
+    {
+        bounds
+    } else {
+        Bounds::centered(None, SIZE, cx)
+    }
+}
 
 fn main() {
     Application::new()
@@ -36,15 +69,13 @@ fn main() {
                 KeyBinding::new("alt-up", app::Earlier, Some("Elsewhere")),
             ]);
 
-            // Tall, to suit the list; the map scrolls sideways instead. Under
-            // 600 so it fits a 1200-pixel display at 2x.
-            let bounds = Bounds::centered(None, size(px(400.), px(560.)), cx);
+            // Read before the window opens, so it opens where it was left.
+            let settings = settings::load();
+            let bounds = bounds(settings.as_ref().ok(), cx);
             cx.open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
-                    // Narrower and a row cannot hold a name and a time;
-                    // shorter and the search has no room for results.
-                    window_min_size: Some(size(px(320.), px(360.))),
+                    window_min_size: Some(MIN_SIZE),
                     titlebar: Some(TitlebarOptions {
                         title: Some("elsewhere".into()),
                         // Drops the caption but keeps the system frame on
@@ -58,7 +89,7 @@ fn main() {
                     window_decorations: Some(WindowDecorations::Client),
                     ..Default::default()
                 },
-                |window, cx| cx.new(|cx| app::Elsewhere::new(window, cx)),
+                |window, cx| cx.new(|cx| app::Elsewhere::new(settings, window, cx)),
             )
             .expect("failed to open window");
             cx.activate(true);

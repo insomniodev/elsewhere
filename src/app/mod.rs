@@ -1,9 +1,10 @@
 use std::cell::Cell;
 use std::rc::Rc;
+use std::time::Duration;
 
 use gpui::{
-    Axis, Context, Entity, ScrollHandle, SharedString, Task, Window, actions, div, prelude::*, px,
-    rgb,
+    Axis, Context, Entity, ScrollHandle, SharedString, Subscription, Task, Window, actions, div,
+    prelude::*, px, rgb,
 };
 use jiff::{RoundMode, Span, Unit, Zoned, ZonedRound};
 
@@ -12,6 +13,7 @@ mod drag;
 mod footer;
 mod grid;
 mod map;
+mod notice;
 mod resize;
 mod row;
 mod scrollbar;
@@ -25,9 +27,11 @@ use crate::geo;
 use crate::land;
 use crate::saved;
 use crate::search::SearchIndex;
+use crate::settings::{self, Settings};
 use crate::theme;
 use crate::vendor::text_input::TextInput;
 use crate::zones;
+use notice::{Kind, Notice};
 use scrollbar::scrollbar;
 use search::{SearchEvent, SearchPicker};
 
@@ -41,6 +45,10 @@ actions!(elsewhere, [Unpin, Later, Earlier]);
 
 /// One wheel notch over the map, or one press of Later or Earlier.
 const STEP_MINUTES: i64 = 15;
+
+/// How long the window must hold still before its bounds are written, so a
+/// drag writes once rather than every frame.
+const BOUNDS_SETTLE: Duration = Duration::from_millis(500);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum View {
@@ -89,13 +97,23 @@ pub struct Elsewhere {
     index: Rc<SearchIndex>,
     /// Geonameids, in the order the user arranged.
     saved: Vec<u32>,
-    /// The saved file exists but could not be read, so writing `saved` over it
-    /// would lose its contents.
-    saved_unreadable: bool,
+    /// Why the saved file could not be read. It exists, so writing `saved`
+    /// over it would lose its contents.
+    saved_unreadable: Option<SharedString>,
+    /// Likewise for the settings file.
+    settings_unreadable: Option<SharedString>,
+    /// What the settings file holds, so only a change is written.
+    settings_written: Settings,
+    /// Restarted by each move or resize; dropping it cancels the write.
+    settings_settle: Option<Task<()>>,
+    _bounds: Subscription,
+    notice: Option<Notice>,
+    /// Dropping it keeps the notice up.
+    notice_timer: Option<Task<()>>,
     zones: clock::Zones,
     /// The row being dragged, by geonameid.
     drag: Option<u32>,
-    // View preferences, deliberately not persisted.
+    // View preferences, kept in the settings file with the window's bounds.
     view: View,
     /// Ordered by longitude rather than by hand.
     westward: bool,
@@ -129,14 +147,24 @@ pub struct Elsewhere {
 }
 
 impl Elsewhere {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    /// `settings` comes from `main`, which read it to place the window.
+    pub fn new(
+        settings: Result<Settings, String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let index = Rc::new(SearchIndex::new(cities::load()));
         let picker = cx.new(|cx| SearchPicker::new(index.clone(), window, cx));
         cx.subscribe(&picker, Self::picked).detach();
 
         let loaded = saved::load();
-        let saved_unreadable = loaded.is_none();
+        let saved_unreadable = loaded.as_ref().err().map(|e| unreadable(e, "changes"));
         let mut saved = loaded.unwrap_or_default();
+        let settings_unreadable = settings
+            .as_ref()
+            .err()
+            .map(|e| unreadable(e, "preferences"));
+        let settings = settings.unwrap_or_default();
         // A regenerated dataset may have dropped a city saved by an older run.
         saved.retain(|id| index.city(*id).is_some());
         // Up front, so restored rows show a time on the first frame.
@@ -147,16 +175,35 @@ impl Elsewhere {
             }
         }
 
+        let bounds = cx.observe_window_bounds(window, |this, window, cx| {
+            this.settings_settle = Some(cx.spawn_in(window, async move |this, cx| {
+                cx.background_executor().timer(BOUNDS_SETTLE).await;
+                this.update_in(cx, |this, window, cx| this.persist_settings(window, cx))
+                    .ok();
+            }));
+        });
+        // The list matters more, so its warning wins the one slot.
+        let notice = saved_unreadable
+            .clone()
+            .or_else(|| settings_unreadable.clone())
+            .map(|text| Notice::new(Kind::Failure, text));
+
         Self {
             picker,
             index,
             saved,
             saved_unreadable,
+            settings_unreadable,
+            view: settings.view,
+            westward: settings.westward,
+            format: settings.format,
+            settings_written: settings,
+            settings_settle: None,
+            _bounds: bounds,
+            notice,
+            notice_timer: None,
             zones,
             drag: None,
-            view: View::default(),
-            westward: false,
-            format: clock::Format::default(),
             pinned: None,
             editing: None,
             saved_scroll: ScrollHandle::new(),
@@ -183,10 +230,51 @@ impl Elsewhere {
         self.save(*geonameid, cx);
     }
 
-    /// Writes the list to disk, unless the file could not be read at startup.
-    pub(super) fn persist(&self) {
-        if !self.saved_unreadable {
-            saved::save(&self.saved);
+    /// Writes the list to disk, unless the file could not be read at startup,
+    /// in which case the warning comes back if it was dismissed.
+    pub(super) fn persist(&mut self, cx: &mut Context<Self>) {
+        if let Some(text) = &self.saved_unreadable {
+            if self.notice.is_none() {
+                self.show_notice(Notice::new(Kind::Failure, text.clone()), cx);
+            }
+            return;
+        }
+        if let Err(e) = saved::save(&self.saved) {
+            let notice =
+                Notice::new(Kind::Failure, e).action("retry", |this, _window, cx| this.persist(cx));
+            self.show_notice(notice, cx);
+        }
+    }
+
+    /// Writes the view preferences and the window's bounds, if they changed
+    /// since the last write. Guarded like `persist`.
+    pub(super) fn persist_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // The restore bounds while maximized, which is what a relaunch wants.
+        let bounds = window.window_bounds().get_bounds();
+        let settings = Settings {
+            view: self.view,
+            westward: self.westward,
+            format: self.format,
+            size: Some(bounds.size),
+            origin: Some(bounds.origin),
+        };
+        if settings == self.settings_written {
+            return;
+        }
+        if let Some(text) = &self.settings_unreadable {
+            if self.notice.is_none() {
+                self.show_notice(Notice::new(Kind::Failure, text.clone()), cx);
+            }
+            return;
+        }
+        match settings::save(&settings) {
+            Ok(()) => self.settings_written = settings,
+            Err(e) => {
+                let notice = Notice::new(Kind::Failure, e).action("retry", |this, window, cx| {
+                    this.persist_settings(window, cx)
+                });
+                self.show_notice(notice, cx);
+            }
         }
     }
 
@@ -196,7 +284,7 @@ impl Elsewhere {
             if let Some(city) = self.index.city(geonameid) {
                 self.zones.resolve(&city.timezone);
             }
-            self.persist();
+            self.persist(cx);
             // Only the hand-arranged order appends at the end; westward drops
             // the new row wherever its longitude falls.
             if !self.westward {
@@ -226,6 +314,12 @@ impl Elsewhere {
         self.close_editor(window, cx);
         self.nudge(steps, cx);
     }
+}
+
+/// The warning for a file that exists but could not be read, saying what is
+/// at stake.
+fn unreadable(error: &str, what: &str) -> SharedString {
+    format!("{error}; {what} won't be saved").into()
 }
 
 /// Truncated to the quarter hour, so steps from the real clock land on round
@@ -337,6 +431,7 @@ impl Render for Elsewhere {
                         .child(scrollbar(&self.saved_scroll, Axis::Vertical, px(-6.))),
                 }
             }))
+            .children(self.render_notice(cx))
             .child(self.render_footer(dragging, cx))
             // Last, so they lie over everything else.
             .children(resize::handles(window))

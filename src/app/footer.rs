@@ -102,18 +102,21 @@ impl Elsewhere {
         // Not every view has a box for an open editor, and its focus would be
         // stranded where there is none.
         self.close_editor(window, cx);
+        self.persist_settings(window, cx);
     }
 
-    fn toggle_westward(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    fn toggle_westward(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.westward = !self.westward;
+        self.persist_settings(window, cx);
         cx.notify();
     }
 
-    fn toggle_format(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    fn toggle_format(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.format = match self.format {
             Format::TwentyFour => Format::Twelve,
             Format::Twelve => Format::TwentyFour,
         };
+        self.persist_settings(window, cx);
         cx.notify();
     }
 

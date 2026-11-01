@@ -1,7 +1,8 @@
 //! The saved city list on disk, one geonameid per line so it stays
 //! hand-editable. Problems degrade to fewer cities rather than an error, but a
 //! file that could not be read must never be mistaken for an empty one and
-//! written over.
+//! written over. The settings file lives beside it and is read and written
+//! the same way.
 
 use std::env;
 use std::fs;
@@ -22,7 +23,8 @@ fn dir(xdg: Option<&str>, home: Option<&str>) -> Option<PathBuf> {
     Some(PathBuf::from(home).join(".config").join("elsewhere"))
 }
 
-fn path() -> Option<PathBuf> {
+/// `name` in the app's config directory.
+pub(crate) fn config_file(name: &str) -> Option<PathBuf> {
     let dir = if cfg!(windows) {
         // Windows has no XDG and seldom a HOME; per-user settings go in the
         // roaming app data folder.
@@ -33,7 +35,57 @@ fn path() -> Option<PathBuf> {
         let home = env::var("HOME").ok();
         dir(xdg.as_deref(), home.as_deref())
     };
-    dir.map(|dir| dir.join("saved"))
+    dir.map(|dir| dir.join(name))
+}
+
+/// For messages: home shortened to `~`, so the part that matters fits.
+fn shown(path: &Path) -> String {
+    let home = env::var("HOME").ok().filter(|home| !home.is_empty());
+    match home.and_then(|home| path.strip_prefix(home).ok().map(Path::to_path_buf)) {
+        Some(rest) => Path::new("~").join(rest).display().to_string(),
+        None => path.display().to_string(),
+    }
+}
+
+/// io's message in the app's voice: lower case, without the os error number.
+fn reason(e: &io::Error) -> String {
+    let message = e.to_string();
+    let message = match message.find(" (os error") {
+        Some(at) => &message[..at],
+        None => &message,
+    };
+    let mut chars = message.chars();
+    match chars.next() {
+        Some(first) => first.to_lowercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
+/// A missing file is `Ok(None)`. Anything else that stops the read comes back
+/// as a message naming the file, for the app to show.
+pub(crate) fn read_text(path: &Path) -> Result<Option<String>, String> {
+    match fs::read_to_string(path) {
+        Ok(text) => Ok(Some(text)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => {
+            eprintln!("{}: {e}", path.display());
+            Err(format!("can't read {}: {}", shown(path), reason(&e)))
+        }
+    }
+}
+
+/// Writes through a temporary file renamed into place, so an interrupted write
+/// cannot leave half a file. The error names the file, for the app to show.
+pub(crate) fn write_text(path: &Path, text: &str) -> Result<(), String> {
+    let temp = path.with_extension("tmp");
+    let dir = path.parent().unwrap_or(Path::new("."));
+    fs::create_dir_all(dir)
+        .and_then(|()| fs::write(&temp, text))
+        .and_then(|()| fs::rename(&temp, path))
+        .map_err(|e| {
+            eprintln!("{}: {e}", path.display());
+            format!("can't save {}: {}", shown(path), reason(&e))
+        })
 }
 
 /// Drops blanks, comments, garbage and repeats.
@@ -64,43 +116,28 @@ fn render(saved: &[u32]) -> String {
 }
 
 /// Only a missing file counts as empty; one that exists but cannot be read
-/// comes back `None`.
-fn read(path: &Path) -> Option<Vec<u32>> {
-    match fs::read_to_string(path) {
-        Ok(text) => Some(parse(&text)),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Some(Vec::new()),
-        Err(e) => {
-            eprintln!("{}: {e}", path.display());
-            None
-        }
-    }
+/// is an error.
+fn read(path: &Path) -> Result<Vec<u32>, String> {
+    Ok(read_text(path)?
+        .map(|text| parse(&text))
+        .unwrap_or_default())
 }
 
-/// `None` when the file could not be read, in which case the session must not
-/// save over it.
-pub fn load() -> Option<Vec<u32>> {
-    match path() {
+/// An error when the file could not be read, in which case the session must
+/// not save over it.
+pub fn load() -> Result<Vec<u32>, String> {
+    match config_file("saved") {
         Some(path) => read(&path),
-        None => Some(Vec::new()),
+        None => Ok(Vec::new()),
     }
 }
 
-/// Writes through a temporary file renamed into place, so an interrupted write
-/// cannot leave half a list. Failures are only reported: they must not break
-/// the running session.
-pub fn save(saved: &[u32]) {
-    let Some(path) = path() else {
-        return;
-    };
-    let Some(dir) = path.parent() else {
-        return;
-    };
-    let temp = path.with_extension("tmp");
-    if let Err(e) = fs::create_dir_all(dir)
-        .and_then(|()| fs::write(&temp, render(saved)))
-        .and_then(|()| fs::rename(&temp, &path))
-    {
-        eprintln!("{}: {e}", path.display());
+/// Failures come back for the app to show; they must not break the running
+/// session.
+pub fn save(saved: &[u32]) -> Result<(), String> {
+    match config_file("saved") {
+        Some(path) => write_text(&path, &render(saved)),
+        None => Ok(()),
     }
 }
 
@@ -170,13 +207,43 @@ mod tests {
     #[test]
     fn a_missing_file_is_an_empty_list() {
         let path = env::temp_dir().join("elsewhere-saved-that-does-not-exist");
-        assert_eq!(read(&path), Some(Vec::new()));
+        assert_eq!(read(&path), Ok(Vec::new()));
     }
 
     #[test]
     fn a_file_that_cannot_be_read_is_not_an_empty_list() {
         // A directory is there but is no file to read.
-        assert_eq!(read(&env::temp_dir()), None);
+        let error = read(&env::temp_dir()).unwrap_err();
+        assert!(error.starts_with("can't read "), "{error}");
+    }
+
+    #[test]
+    fn io_errors_read_lower_case_without_the_os_number() {
+        let e = io::Error::from_raw_os_error(13);
+        assert_eq!(reason(&e), "permission denied");
+    }
+
+    #[test]
+    fn a_write_into_a_missing_dir_creates_it_and_round_trips() {
+        let dir = env::temp_dir().join(format!("elsewhere-saved-{}", std::process::id()));
+        let path = dir.join("saved");
+        let saved = [1850147, 2643743];
+        assert_eq!(write_text(&path, &render(&saved)), Ok(()));
+        assert_eq!(read(&path), Ok(saved.to_vec()));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_failed_write_names_the_file() {
+        // A path under a regular file cannot be created.
+        let file = env::temp_dir().join(format!("elsewhere-blocker-{}", std::process::id()));
+        fs::write(&file, "").unwrap();
+        let error = write_text(&file.join("saved"), "").unwrap_err();
+        fs::remove_file(&file).unwrap();
+        assert!(
+            error.starts_with("can't save ") && error.contains("saved"),
+            "{error}"
+        );
     }
 
     #[test]

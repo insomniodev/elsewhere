@@ -63,7 +63,7 @@ impl Elsewhere {
     pub(super) fn drop(&mut self, dragged: u32, before: Option<u32>, cx: &mut Context<Self>) {
         self.drag = None;
         if saved::reorder(&mut self.saved, dragged, before) {
-            self.persist();
+            self.persist(cx);
         }
         cx.notify();
     }

@@ -2,8 +2,8 @@
 //! share, so they keep a box and a state vocabulary.
 
 use gpui::{
-    AnyView, App, ClickEvent, Div, FocusHandle, Pixels, Rgba, Stateful, Svg, Window,
-    WindowControlArea, div, prelude::*, px, rgb, svg, transparent_black,
+    AnyElement, AnyView, App, ClickEvent, Div, FocusHandle, Pixels, Rgba, SharedString, Stateful,
+    Svg, Window, WindowControlArea, div, prelude::*, px, rgb, svg, transparent_black,
 };
 
 use crate::theme;
@@ -25,12 +25,22 @@ struct Drop {
     icon: fn(Svg, &'static str) -> Svg,
 }
 
+/// What the button shows.
+enum Face {
+    Icon {
+        path: &'static str,
+        /// Glyphs fill their box unevenly: a circle runs edge to edge where
+        /// the signpost leaves a margin, so drawn equal it looks bigger.
+        size: Pixels,
+    },
+    /// A word, where an icon would need a tooltip to say what it does. Text
+    /// takes its color at layout, so the hover color does not reach it.
+    Label(SharedString),
+}
+
 pub(super) struct Button {
     id: &'static str,
-    icon: &'static str,
-    /// Glyphs fill their box unevenly: a circle runs edge to edge where the
-    /// signpost leaves a margin, so drawn equal it looks bigger.
-    size: Pixels,
+    face: Face,
     rest: u32,
     hover: Option<u32>,
     wash: Rgba,
@@ -47,10 +57,18 @@ pub(super) struct Button {
 
 impl Button {
     pub(super) fn new(id: &'static str, icon: &'static str, size: Pixels) -> Self {
+        Self::with(id, Face::Icon { path: icon, size })
+    }
+
+    /// As wide as the word, and never narrower than an icon button.
+    pub(super) fn label(id: &'static str, label: impl Into<SharedString>) -> Self {
+        Self::with(id, Face::Label(label.into()))
+    }
+
+    fn with(id: &'static str, face: Face) -> Self {
         Self {
             id,
-            icon,
-            size,
+            face,
             rest: theme::OVERLAY2,
             hover: None,
             wash: rgb(theme::SURFACE0),
@@ -158,8 +176,7 @@ impl Button {
     pub(super) fn build(self) -> Stateful<Div> {
         let Self {
             id,
-            icon,
-            size,
+            face,
             rest,
             hover,
             wash,
@@ -175,21 +192,34 @@ impl Button {
         } = self;
         let live = !disabled && !current;
         let color = if on { theme::BLUE } else { rest };
-        let mut icon = svg()
-            .path(icon)
-            .size(size)
-            // An svg does not inherit its parent's color.
-            .text_color(rgb(color));
-        if let (Some(hover), true) = (hover, live) {
-            icon = icon.group_hover(id, move |style| style.text_color(rgb(hover)));
-        }
-        if let Some(drop) = drop {
-            icon = (drop.icon)(icon, id);
-        }
+        let labelled = matches!(face, Face::Label(_));
+        let face: AnyElement = match face {
+            Face::Icon { path, size } => {
+                let mut icon = svg()
+                    .path(path)
+                    .size(size)
+                    // An svg does not inherit its parent's color.
+                    .text_color(rgb(color));
+                if let (Some(hover), true) = (hover, live) {
+                    icon = icon.group_hover(id, move |style| style.text_color(rgb(hover)));
+                }
+                if let Some(drop) = drop {
+                    icon = (drop.icon)(icon, id);
+                }
+                icon.into_any_element()
+            }
+            Face::Label(label) => div().text_color(rgb(color)).child(label).into_any_element(),
+        };
         let mut button = div()
             .id(id)
             .group(id)
-            .w(WIDTH)
+            .map(|button| {
+                if labelled {
+                    button.min_w(WIDTH).px_1p5()
+                } else {
+                    button.w(WIDTH)
+                }
+            })
             .h(HEIGHT)
             .flex()
             .items_center()
@@ -223,6 +253,6 @@ impl Button {
         if let Some(drop) = drop {
             button = (drop.frame)(button);
         }
-        button.child(icon)
+        button.child(face)
     }
 }

@@ -56,7 +56,7 @@ pub(super) fn mono(cx: &App) -> Option<SharedString> {
 impl Elsewhere {
     pub(super) fn delete(&mut self, geonameid: u32, window: &mut Window, cx: &mut Context<Self>) {
         self.saved.retain(|id| *id != geonameid);
-        self.persist();
+        self.persist(cx);
         if self
             .editing
             .as_ref()
