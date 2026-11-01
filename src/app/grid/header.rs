@@ -11,9 +11,14 @@ use crate::app::tooltip::Tooltip;
 use crate::clock;
 use crate::theme;
 
+/// The date line over the heads: out of the scroller so it stays in the
+/// corner and never widens the content.
+pub(super) const DATE: Pixels = px(18.);
+
 /// Fixed, so a column with no offset line keeps the rules level, and the
-/// hours' scrollbar knows where to start.
-pub(super) const HEAD: Pixels = px(40.);
+/// hours' scrollbar knows where to start. The heads sit at the bottom, under
+/// the date line.
+pub(super) const HEAD: Pixels = px(58.);
 
 impl Elsewhere {
     pub(super) fn render_heads(

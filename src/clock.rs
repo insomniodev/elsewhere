@@ -193,6 +193,37 @@ fn day(here: Date, there: Date) -> Option<String> {
     }
 }
 
+/// "+1", "−1", "+2": `day` for where a word will not fit, with the offsets'
+/// minus sign.
+pub fn day_shift(here: Date, there: Date) -> Option<String> {
+    match there.since((Unit::Day, here)).ok()?.get_days() {
+        0 => None,
+        days if days < 0 => Some(format!("\u{2212}{}", -days)),
+        days => Some(format!("+{days}")),
+    }
+}
+
+/// "Mon 2", or "Mon 1 Dec" on a month's first so a boundary names the month it
+/// enters. Short enough to sit in a grid cell.
+pub fn day_label(date: Date) -> String {
+    if date.day() == 1 {
+        date.strftime("%a %-d %b").to_string()
+    } else {
+        date.strftime("%a %-d").to_string()
+    }
+}
+
+/// "today · Sun 1 Nov" for the day the grid lays out, or just "Mon 2 Nov" once
+/// it has left today, where "tomorrow" would trade the date for a word.
+pub fn grid_date(date: Date, today: Date) -> String {
+    let dated = date.strftime("%a %-d %b");
+    if date == today {
+        format!("today · {dated}")
+    } else {
+        dated.to_string()
+    }
+}
+
 /// "tomorrow", "yesterday" or "Tue 4 Nov": `date` as said on `today`. The
 /// year is left out; a what-if rarely strays that far.
 pub fn day_name(date: Date, today: Date) -> String {
@@ -557,6 +588,44 @@ mod tests {
         assert_eq!(day_name(day(3), today), "Wed 4 Nov");
         assert_eq!(day_name(day(-2), today), "Fri 30 Oct");
         assert_eq!(day_name(day(40), today), "Fri 11 Dec");
+    }
+
+    #[test]
+    fn day_shift_is_the_short_day_tag() {
+        let here = jiff::civil::date(2026, 11, 1);
+        assert_eq!(day_shift(here, here), None);
+        assert_eq!(
+            day_shift(here, jiff::civil::date(2026, 11, 2)).as_deref(),
+            Some("+1")
+        );
+        assert_eq!(
+            day_shift(here, jiff::civil::date(2026, 10, 31)).as_deref(),
+            Some("\u{2212}1")
+        );
+        assert_eq!(
+            day_shift(here, jiff::civil::date(2026, 11, 4)).as_deref(),
+            Some("+3")
+        );
+    }
+
+    #[test]
+    fn a_day_label_names_the_month_only_on_its_first() {
+        assert_eq!(day_label(jiff::civil::date(2026, 11, 2)), "Mon 2");
+        assert_eq!(day_label(jiff::civil::date(2026, 12, 1)), "Tue 1 Dec");
+    }
+
+    #[test]
+    fn the_grid_date_says_today_only_for_today() {
+        let today = jiff::civil::date(2026, 11, 1);
+        assert_eq!(grid_date(today, today), "today · Sun 1 Nov");
+        assert_eq!(
+            grid_date(jiff::civil::date(2026, 11, 2), today),
+            "Mon 2 Nov"
+        );
+        assert_eq!(
+            grid_date(jiff::civil::date(2026, 10, 30), today),
+            "Fri 30 Oct"
+        );
     }
 
     #[test]

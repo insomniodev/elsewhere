@@ -1,5 +1,7 @@
 //! The home day as hour rows, kept gpui-free so it can be tested.
 
+use jiff::civil::Date;
+use jiff::tz::TimeZone;
 use jiff::{Span, Zoned};
 
 /// Rows add whole hours in absolute time, so a day the clocks change has 23
@@ -31,6 +33,16 @@ impl Day {
         self.start
             .checked_add(Span::new().hours(i as i64))
             .expect("a day's hours past midnight never overflow a zone")
+    }
+
+    /// The date a local day begins on at row `i` as read in `zone`: the first
+    /// row whose date differs from the hour before it. Midnight itself need not
+    /// land on a row (Kathmandu's rows fall at :45), and a repeated hour after
+    /// a clock change never starts a day twice.
+    pub fn begins_day(&self, i: usize, zone: &TimeZone) -> Option<Date> {
+        let row = self.row(i).with_time_zone(zone.clone());
+        let before = row.checked_sub(Span::new().hours(1)).ok()?;
+        (row.date() != before.date()).then(|| row.date())
     }
 
     /// Compares instants rather than wall times, so DST days answer right.
@@ -115,6 +127,61 @@ mod tests {
         );
         assert_eq!(day.position(&at("2026-08-16T00:00:00Z", "UTC")), None);
         assert_eq!(day.position(&at("2026-08-14T23:59:00Z", "UTC")), None);
+    }
+
+    fn begins(day: &Day, zone: &str) -> Vec<(usize, String)> {
+        let zone = TimeZone::get(zone).expect("a zone this machine knows");
+        (0..day.rows())
+            .filter_map(|i| Some((i, day.begins_day(i, &zone)?.to_string())))
+            .collect()
+    }
+
+    #[test]
+    fn a_column_begins_its_next_day_once() {
+        // Quito is UTC-5, Tokyo +9: 14 hours ahead.
+        let day = Day::of(&at("2026-11-01T17:00:00Z", "America/Guayaquil"));
+        assert_eq!(begins(&day, "Asia/Tokyo"), [(10, "2026-11-02".to_string())]);
+        // Here's own column begins its day on the first row.
+        assert_eq!(
+            begins(&day, "America/Guayaquil"),
+            [(0, "2026-11-01".to_string())]
+        );
+        // London is 5 hours ahead (GMT): its midnight is the 19th row.
+        assert_eq!(
+            begins(&day, "Europe/London"),
+            [(19, "2026-11-02".to_string())]
+        );
+    }
+
+    #[test]
+    fn a_half_hour_zone_begins_its_day_on_the_row_after_midnight() {
+        let day = Day::of(&at("2026-11-01T17:00:00Z", "America/Guayaquil"));
+        // Kathmandu's rows read :45; midnight falls between 23:45 and 00:45.
+        let rows = begins(&day, "Asia/Kathmandu");
+        assert_eq!(rows.len(), 1);
+        let zone = TimeZone::get("Asia/Kathmandu").expect("a known zone");
+        let local = day.row(rows[0].0).with_time_zone(zone);
+        assert_eq!((local.hour(), local.minute()), (0, 45));
+    }
+
+    #[test]
+    fn a_repeated_hour_does_not_begin_a_day_twice() {
+        // New York falls back on 2026-11-01: 25 rows, 1 am twice.
+        let day = Day::of(&at("2026-11-01T12:00:00Z", "America/New_York"));
+        assert_eq!(
+            begins(&day, "America/New_York"),
+            [(0, "2026-11-01".to_string())]
+        );
+        // Seen from Tokyo, the day changes once whatever the hour repeated.
+        assert_eq!(begins(&day, "Asia/Tokyo").len(), 1);
+    }
+
+    #[test]
+    fn a_short_day_still_begins_each_local_day() {
+        // New York springs forward on 2026-03-08: 23 rows.
+        let day = Day::of(&at("2026-03-08T12:00:00Z", "America/New_York"));
+        assert_eq!(begins(&day, "America/New_York").len(), 1);
+        assert_eq!(begins(&day, "Pacific/Auckland").len(), 1);
     }
 
     #[test]

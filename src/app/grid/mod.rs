@@ -5,9 +5,10 @@ mod header;
 
 use gpui::{Axis, Context, Div, ElementId, Pixels, canvas, div, point, prelude::*, px, rgb, rgba};
 use jiff::Zoned;
+use jiff::civil::Date;
 use jiff::tz::TimeZone;
 
-use super::here::hint_over;
+use super::here::{hint_over, tag};
 use super::scrollbar::scrollbar;
 use super::tooltip::Tooltip;
 use super::{Elsewhere, Pin};
@@ -29,6 +30,13 @@ const LABEL: Pixels = px(11.);
 const INSET: Pixels = px(8.);
 
 const BAR: Pixels = px(22.);
+
+/// A midnight mark's rule, and the gap between a time and its day tag.
+const RULE: Pixels = px(1.);
+const TAG_GAP: Pixels = px(3.);
+
+/// A day name's line box, so it fits the gap over a centred time.
+const DAY_LINE: Pixels = px(12.);
 
 /// The now line's hover band, so a 1px line can still be pointed at.
 const NOW_REACH: Pixels = px(7.);
@@ -139,12 +147,34 @@ impl Elsewhere {
                     .child(scrollbar(&self.grid_hours, Axis::Vertical, px(-6.))),
             )
             .child(scrollbar(&self.grid_scroll, Axis::Horizontal, px(-6.)))
+            .child(self.render_date(now))
             // Beside here's column, not over its hours.
             .when(empty, |grid| {
                 grid.child(hint_over(
                     div().top(header::HEAD).bottom_0().left(COLUMN).right_0(),
                 ))
             })
+    }
+
+    /// The day the hours lay out, in here's zone, over the first column's
+    /// corner. "today" is by the real clock, so a pinned day reads as a date.
+    fn render_date(&self, now: &Zoned) -> impl IntoElement + use<> {
+        let today = Zoned::now().with_time_zone(now.time_zone().clone()).date();
+        let color = self
+            .pinned
+            .as_ref()
+            .map_or(theme::SUBTEXT0, |pin| pin.accent().text);
+        div()
+            .absolute()
+            .top_0()
+            .left(INSET)
+            .h(header::DATE)
+            .flex()
+            .items_center()
+            .text_size(LABEL)
+            .text_color(rgb(color))
+            .whitespace_nowrap()
+            .child(clock::grid_date(now.date(), today))
     }
 
     fn render_body(
@@ -212,26 +242,40 @@ impl Elsewhere {
             .flex_col()
             .children((0..day.rows()).map(|i| {
                 let shown = (shown == Some(i)).then_some(now);
-                self.render_hour(&day.row(i), column, i, shown, cx)
+                let begins = column
+                    .zone
+                    .as_ref()
+                    .and_then(|zone| day.begins_day(i, zone));
+                self.render_hour(&day.row(i), column, i, shown, begins, cx)
             }))
     }
 
     /// A city with no zone keeps the slot, so its rule runs the whole day.
-    /// `shown` is set only on the hour holding the shown instant.
+    /// `shown` is set only on the hour holding the shown instant. `begins` is
+    /// the date of the local day this hour opens, if it opens one.
+    ///
+    /// A midnight mark is a rule along the slot's top and the new day's name
+    /// in the gap above the time, rather than stacked with it or in place of
+    /// the hour: the row keeps its height and its label, and the slot's top is
+    /// where the rows of two days meet. The shown hour's day tag goes inline
+    /// beside its time for the same reason; it never lengthens the cell.
     fn render_hour(
         &self,
         at: &Zoned,
         column: &Column,
         i: usize,
         shown: Option<&Zoned>,
+        begins: Option<Date>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let slot = div()
             .id(("hour", i))
+            .relative()
             .h(ROW)
             .flex()
             .items_center()
             .justify_end()
+            .gap(TAG_GAP)
             .pr(INSET)
             .text_size(LABEL)
             .text_color(rgb(theme::OVERLAY2));
@@ -249,7 +293,33 @@ impl Elsewhere {
             .map_or(theme::TEXT, |pin| pin.accent().text);
         let slot = slot
             .when(shown.is_some(), |slot| slot.text_color(rgb(bright)))
+            .children(begins.map(|date| {
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .right_0()
+                    .h(RULE)
+                    .bg(rgb(theme::SURFACE1))
+                    .child(
+                        div()
+                            .absolute()
+                            .top(RULE)
+                            .right(INSET)
+                            .text_color(rgb(theme::SUBTEXT0))
+                            .line_height(DAY_LINE)
+                            .child(clock::day_label(date)),
+                    )
+            }))
             .child(label.clone());
+        // Only the shown hour, and only where the date differs from here's.
+        let slot = match shown {
+            Some(shown) => slot.children(
+                clock::day_shift(shown.date(), local.date())
+                    .map(|shift| tag(shift).text_size(LABEL)),
+            ),
+            None => slot,
+        };
         // Here's column pins with no row behind it, as a scrub does.
         let (anchor, tip) = match column.geonameid {
             None => (None, format!("{label} here")),
