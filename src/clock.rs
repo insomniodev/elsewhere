@@ -183,6 +183,17 @@ pub fn zone_detail(zone: &TimeZone, at: &Zoned) -> String {
     parts.join(" · ")
 }
 
+/// What every view says of a city on hover: its full label, then
+/// `zone_detail`, so "Tokyo, Japan · Asia/Tokyo · JST · 14 hours ahead of
+/// here · standard time" reads the same in the list, on the map and in the
+/// grid. A city whose zone did not resolve has only its label to say.
+pub fn city_detail(label: &str, zone: Option<&TimeZone>, at: &Zoned) -> String {
+    match zone {
+        Some(zone) => format!("{label} · {}", zone_detail(zone, at)),
+        None => label.to_string(),
+    }
+}
+
 fn day(here: Date, there: Date) -> Option<String> {
     let days = there.since((Unit::Day, here)).ok()?.get_days();
     match days {
@@ -750,6 +761,20 @@ mod tests {
     fn zone_detail_does_not_repeat_utc() {
         let now = at("2026-07-15T12:00:00Z", "UTC");
         assert_eq!(zone_detail(&TimeZone::UTC, &now), "UTC · standard time");
+    }
+
+    #[test]
+    fn city_detail_leads_with_the_label() {
+        let now = at("2026-07-15T12:00:00Z", "America/Guayaquil");
+        assert_eq!(
+            city_detail("Tokyo, Japan", Some(&zone("Asia/Tokyo")), &now),
+            "Tokyo, Japan · Asia/Tokyo · JST · 14 hours ahead of here · standard time"
+        );
+        assert_eq!(
+            city_detail("Quito, Ecuador", Some(&zone("America/Guayaquil")), &now),
+            "Quito, Ecuador · America/Guayaquil · UTC\u{2212}5 · standard time"
+        );
+        assert_eq!(city_detail("Nowhere", None, &now), "Nowhere");
     }
 
     #[test]

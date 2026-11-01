@@ -82,7 +82,18 @@ impl Elsewhere {
     /// name and offset from UTC show when the face is a zone rather than a
     /// city.
     pub(super) fn here_tag(&self, id: &'static str, now: &Zoned) -> Stateful<Div> {
-        let detail = clock::zone_detail(&self.here.zone, now);
-        tag("here").id(id).tooltip(Tooltip::text(detail))
+        tag("here")
+            .id(id)
+            .tooltip(Tooltip::text(self.here_detail(now)))
+    }
+
+    /// `city_detail` for here: under the face's full label when a saved city
+    /// is the face, so its name says what that city's own does.
+    pub(super) fn here_detail(&self, now: &Zoned) -> String {
+        let name = match self.here.city.and_then(|id| self.index.city(id)) {
+            Some(city) => self.index.label(city),
+            None => self.here.name.clone(),
+        };
+        clock::city_detail(&name, Some(&self.here.zone), now)
     }
 }

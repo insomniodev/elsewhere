@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use gpui::{
-    App, Context, Div, Entity, EntityInputHandler, Focusable, Pixels, SharedString, Window,
-    deferred, div, prelude::*, px, rgb, rgba,
+    App, Context, Div, ElementId, Entity, EntityInputHandler, Focusable, Pixels, SharedString,
+    Window, deferred, div, prelude::*, px, rgb, rgba,
 };
 use jiff::Zoned;
 
@@ -273,7 +273,13 @@ impl Elsewhere {
                 .items_center()
                 .gap_2()
                 .pl(WASH)
-                .child(self.render_name(self.here.name.clone(), true, now))
+                .child(self.render_name(
+                    "name-here".into(),
+                    self.here.name.clone(),
+                    self.here_detail(now),
+                    true,
+                    now,
+                ))
                 .child(
                     div()
                         .w(time_width(self.format))
@@ -296,8 +302,16 @@ impl Elsewhere {
 
     /// The name with the "here" mark beside it when it is here. The mark goes
     /// next to the name rather than out by the time with the day tag, as the
-    /// name is what it describes.
-    fn render_name(&self, name: String, here: bool, now: &Zoned) -> impl IntoElement + use<> {
+    /// name is what it describes. Hovering the name gives `detail`, and shows
+    /// the whole label when it is cut short.
+    fn render_name(
+        &self,
+        id: ElementId,
+        name: String,
+        detail: String,
+        here: bool,
+        now: &Zoned,
+    ) -> impl IntoElement + use<> {
         div()
             .flex_1()
             .min_w_0()
@@ -307,9 +321,11 @@ impl Elsewhere {
             .gap_2()
             .child(
                 div()
+                    .id(id)
                     .min_w_0()
                     .truncate()
                     .text_color(rgb(theme::SUBTEXT0))
+                    .tooltip(Tooltip::text(detail))
                     .child(name),
             )
             .when(here, |name| name.child(self.here_tag("here-row", now)))
@@ -328,10 +344,9 @@ impl Elsewhere {
     ) -> Option<impl IntoElement + use<>> {
         let city = self.index.city(geonameid)?;
         let label = self.index.label(city);
-        let reading = self
-            .zones
-            .get(&city.timezone)
-            .map(|zone| clock::reading(now, zone, self.format));
+        let zone = self.zones.get(&city.timezone);
+        let detail = clock::city_detail(&label, zone, now);
+        let reading = zone.map(|zone| clock::reading(now, zone, self.format));
         // Only a row whose zone resolved can anchor a pin.
         let known = reading.is_some();
         let (time, day) = match reading {
@@ -364,6 +379,10 @@ impl Elsewhere {
                     .group("row")
                     .pl(WASH)
                     .rounded_md()
+                    // Not a click target: the wash shows the row is live for
+                    // its remove button and as a drag handle, so only the time
+                    // and the button take a pointer cursor. The name's tooltip
+                    // says what the row is.
                     .hover(|style| style.bg(rgba(theme::WASH)))
                     .when(self.revealed == Some(geonameid), |row| {
                         row.bg(rgba(theme::WASH))
@@ -380,7 +399,13 @@ impl Elsewhere {
                     // A flex item's automatic minimum is its content, so a long
                     // label would shove the time past the right edge. `min_w_0`
                     // lets it give way and truncate instead.
-                    .child(self.render_name(label, self.here.city == Some(geonameid), now))
+                    .child(self.render_name(
+                        ("name", geonameid as usize).into(),
+                        label,
+                        detail,
+                        self.here.city == Some(geonameid),
+                        now,
+                    ))
                     .children(day.map(tag))
                     .child(match &self.editing {
                         Some((editing, input)) if *editing == geonameid => {

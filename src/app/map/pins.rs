@@ -137,7 +137,7 @@ impl Elsewhere {
                 Marker {
                     geonameid: None,
                     centre: centre(city.longitude, city.latitude, size),
-                    tip: format!("here · {}", clock::zone_detail(&self.here.zone, now)),
+                    tip: self.here_detail(now),
                     name: self.here.name.clone(),
                     time,
                     day: None,
@@ -157,12 +157,7 @@ impl Elsewhere {
                 None => (clock::UNKNOWN.to_string(), None),
             };
             let home = self.here.city == Some(*geonameid);
-            let label = self.index.label(city);
-            let tip = match zone {
-                _ if home => format!("{label} · here"),
-                Some(zone) => format!("{label} · {}", clock::shift_detail(zone, now)),
-                None => label,
-            };
+            let tip = clock::city_detail(&self.index.label(city), zone, now);
             let mut width = measure(window, &city.name, &text, text_size)
                 + gap
                 + measure(window, &time, &mono, text_size);
@@ -331,8 +326,13 @@ impl Elsewhere {
             .gap(PART_GAP)
             .child(
                 div()
+                    .id(match marker.geonameid {
+                        Some(geonameid) => ElementId::from(("map-name", geonameid as usize)),
+                        None => ElementId::from("map-name-here"),
+                    })
                     .text_xs()
                     .text_color(rgb(theme::SUBTEXT0))
+                    .tooltip(Tooltip::text(marker.tip.clone()))
                     .child(marker.name.clone()),
             )
             .when(marker.home, |label| {

@@ -75,7 +75,7 @@ impl Elsewhere {
                 .child(
                     shortened(div().id("head-here"))
                         .text_color(rgb(theme::SUBTEXT0))
-                        .tooltip(Tooltip::text(clock::zone_detail(&self.here.zone, now)))
+                        .tooltip(Tooltip::text(self.here_detail(now)))
                         .child(self.here.name.clone()),
                 )
                 .children(offset);
@@ -84,10 +84,7 @@ impl Elsewhere {
             return head;
         };
         let label = self.index.label(city);
-        let tip = match &column.zone {
-            Some(zone) => format!("{label} · {}", clock::zone_detail(zone, now)),
-            None => label.clone(),
-        };
+        let tip = clock::city_detail(&label, column.zone.as_ref(), now);
         head.child(
             shortened(div().id(("head", geonameid as usize)))
                 .text_color(rgb(theme::SUBTEXT0))
