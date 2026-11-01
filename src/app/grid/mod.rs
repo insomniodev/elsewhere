@@ -15,7 +15,7 @@ use crate::hours;
 use crate::theme;
 
 /// Also stops a long city name holding its column open, as a flex item's
-/// automatic minimum is its content. Fits "10:30 PM" at the 11px face plus the
+/// automatic minimum is its content. Fits "10:30 pm" at the 11px face plus the
 /// inset; narrower, the grid scrolls sideways.
 const COLUMN: Pixels = px(68.);
 

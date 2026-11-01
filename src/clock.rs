@@ -66,14 +66,14 @@ fn twelve(hour: i8) -> (i8, &'static str) {
     (hour, half)
 }
 
-/// "9 AM" or "09:00", as a calendar gutter writes it. 12-hour labels show
-/// minutes only for zones off the hour ("5:30 AM").
+/// "9 am" or "09:00", as a calendar gutter writes it. 12-hour labels show
+/// minutes only for zones off the hour ("5:30 am"), and use the same lower-case
+/// half as `reading`.
 pub fn hour_label(hour: i8, minute: i8, format: Format) -> String {
     match format {
         Format::TwentyFour => format!("{hour:02}:{minute:02}"),
         Format::Twelve => {
             let (hour, half) = twelve(hour);
-            let half = half.to_uppercase();
             if minute == 0 {
                 format!("{hour} {half}")
             } else {
@@ -83,7 +83,9 @@ pub fn hour_label(hour: i8, minute: i8, format: Format) -> String {
     }
 }
 
-/// "UTC", "+1", "−5", "+5:30" (U+2212 minus).
+/// "UTC", "+1", "−5", "+5:30" (U+2212 minus): the one notation for offsets
+/// everywhere. Callers pass the offset from UTC for now; UX-05 will switch the
+/// reference to here.
 pub fn offset_label(offset: Offset) -> String {
     let seconds = offset.seconds();
     if seconds == 0 {
@@ -100,8 +102,10 @@ pub fn offset_label(offset: Offset) -> String {
     }
 }
 
-/// "America/New_York · EDT · daylight time"; "EDT · daylight time" without an
-/// IANA name.
+/// "America/New_York · EDT · UTC−4 · daylight time"; the IANA name is left out
+/// for a zone without one. The offset is named from UTC, in `offset_label`'s
+/// notation. tzdb abbreviates many zones as a bare "-05", which is dropped
+/// rather than shown beside it.
 pub fn zone_detail(zone: &TimeZone, at: &Zoned) -> String {
     let info = zone.to_offset_info(at.timestamp());
     let kind = if info.dst().is_dst() {
@@ -109,11 +113,24 @@ pub fn zone_detail(zone: &TimeZone, at: &Zoned) -> String {
     } else {
         "standard"
     };
-    let tail = format!("{} · {kind} time", info.abbreviation());
-    match zone.iana_name() {
-        Some(name) => format!("{name} · {tail}"),
-        None => tail,
+    let offset = match offset_label(info.offset()) {
+        zero if zero == "UTC" => zero,
+        label => format!("UTC{label}"),
+    };
+    let abbreviation = info.abbreviation();
+    let numeric = abbreviation.starts_with(['+', '-']);
+    let name = zone.iana_name();
+    let mut parts = Vec::new();
+    parts.extend(name);
+    if !numeric && abbreviation != offset && Some(abbreviation) != name {
+        parts.push(abbreviation);
     }
+    if Some(offset.as_str()) != name {
+        parts.push(&offset);
+    }
+    let tail = format!("{kind} time");
+    parts.push(&tail);
+    parts.join(" · ")
 }
 
 fn day(here: Date, there: Date) -> Option<String> {
@@ -407,12 +424,12 @@ mod tests {
             assert_eq!(hour_label(hour, minute, Format::TwentyFour), expected);
         }
         for (hour, minute, expected) in [
-            (0, 0, "12 AM"),
-            (9, 0, "9 AM"),
-            (5, 30, "5:30 AM"),
-            (12, 0, "12 PM"),
-            (13, 45, "1:45 PM"),
-            (23, 0, "11 PM"),
+            (0, 0, "12 am"),
+            (9, 0, "9 am"),
+            (5, 30, "5:30 am"),
+            (12, 0, "12 pm"),
+            (13, 45, "1:45 pm"),
+            (23, 0, "11 pm"),
         ] {
             assert_eq!(hour_label(hour, minute, Format::Twelve), expected);
         }
@@ -447,12 +464,48 @@ mod tests {
         let july = at("2026-07-15T12:00:00Z", "America/New_York");
         assert_eq!(
             zone_detail(&zone("America/New_York"), &july),
-            "America/New_York · EDT · daylight time"
+            "America/New_York · EDT · UTC\u{2212}4 · daylight time"
         );
         let january = at("2026-01-15T12:00:00Z", "America/New_York");
         assert_eq!(
             zone_detail(&zone("America/New_York"), &january),
-            "America/New_York · EST · standard time"
+            "America/New_York · EST · UTC\u{2212}5 · standard time"
         );
+    }
+
+    #[test]
+    fn zone_detail_drops_a_numeric_abbreviation_for_the_offset() {
+        // tzdb calls Ecuador "-05"; the detail reads as the grid head does.
+        let now = at("2026-07-15T12:00:00Z", "America/Guayaquil");
+        let detail = zone_detail(&zone("America/Guayaquil"), &now);
+        assert_eq!(detail, "America/Guayaquil · UTC\u{2212}5 · standard time");
+        let now = at("2026-07-15T12:00:00Z", "Asia/Kathmandu");
+        assert_eq!(
+            zone_detail(&zone("Asia/Kathmandu"), &now),
+            "Asia/Kathmandu · UTC+5:45 · standard time"
+        );
+    }
+
+    #[test]
+    fn zone_detail_does_not_repeat_utc() {
+        let now = at("2026-07-15T12:00:00Z", "UTC");
+        assert_eq!(zone_detail(&TimeZone::UTC, &now), "UTC · standard time");
+    }
+
+    #[test]
+    fn heads_tooltips_and_marks_share_one_offset_notation() {
+        let now = at("2026-07-15T12:00:00Z", "UTC");
+        let head = offset_label(zone("America/Guayaquil").to_offset(now.timestamp()));
+        assert_eq!(head, "\u{2212}5");
+        assert!(zone_detail(&zone("America/Guayaquil"), &now).contains(&format!("UTC{head}")));
+    }
+
+    #[test]
+    fn twelve_hour_halves_are_lower_case_everywhere() {
+        let now = at("2026-08-15T21:00:00Z", "UTC");
+        let list = reading(&now, &zone("UTC"), Format::Twelve).time;
+        assert_eq!(list, "9:00 pm");
+        assert_eq!(hour_label(21, 0, Format::Twelve), "9 pm");
+        assert_eq!(hour_label(21, 30, Format::Twelve), "9:30 pm");
     }
 }
