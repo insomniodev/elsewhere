@@ -122,7 +122,7 @@ impl Elsewhere {
                     .path(icon)
                     .size(size)
                     // An svg does not inherit its parent's color.
-                    .text_color(rgb(theme::OVERLAY0))
+                    .text_color(rgb(theme::OVERLAY2))
                     .group_hover(id, |style| style.text_color(rgb(hover))),
             )
     }
@@ -153,7 +153,7 @@ impl Elsewhere {
                     .flex()
                     .items_center()
                     .text_xs()
-                    .text_color(rgb(theme::OVERLAY0))
+                    .text_color(rgb(theme::OVERLAY2))
                     .child("elsewhere")
                     .map(|strip| match Chrome::CURRENT {
                         // Windows has no move on request; the strip is its

@@ -232,7 +232,7 @@ impl Elsewhere {
                     let run = TextRun {
                         len: text.len(),
                         font: font.clone(),
-                        color: rgb(theme::OVERLAY0).into(),
+                        color: rgb(theme::OVERLAY2).into(),
                         background_color: None,
                         underline: None,
                         strikethrough: None,

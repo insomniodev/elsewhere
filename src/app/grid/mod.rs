@@ -188,7 +188,7 @@ impl Elsewhere {
             .justify_end()
             .pr(INSET)
             .text_size(LABEL)
-            .text_color(rgb(theme::OVERLAY0));
+            .text_color(rgb(theme::OVERLAY2));
         let Some(zone) = &column.zone else {
             return slot;
         };

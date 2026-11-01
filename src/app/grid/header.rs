@@ -41,7 +41,7 @@ impl Elsewhere {
     ) -> impl IntoElement + use<> {
         let offset = column.zone.as_ref().map(|zone| {
             shortened(div())
-                .text_color(rgb(theme::OVERLAY0))
+                .text_color(rgb(theme::OVERLAY2))
                 .child(clock::offset_label(zone.to_offset(now.timestamp())))
         });
         let head = div()
@@ -61,7 +61,7 @@ impl Elsewhere {
             return head
                 .child(
                     shortened(div().id("head-here"))
-                        .text_color(rgb(theme::OVERLAY0))
+                        .text_color(rgb(theme::OVERLAY2))
                         .tooltip(Tooltip::text(tip))
                         .child("here"),
                 )

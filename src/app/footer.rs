@@ -132,7 +132,7 @@ impl Elsewhere {
                     .text_color(if on {
                         rgb(theme::BLUE)
                     } else {
-                        rgb(theme::OVERLAY0)
+                        rgb(theme::OVERLAY2)
                     }),
             )
     }
@@ -181,7 +181,7 @@ impl Elsewhere {
                             .text_color(if on {
                                 rgb(theme::BLUE)
                             } else {
-                                rgb(theme::OVERLAY0)
+                                rgb(theme::OVERLAY2)
                             }),
                     )
             }))
@@ -244,7 +244,7 @@ impl Elsewhere {
                                 )
                                 .child("back to now"),
                         )
-                        .child(div().text_color(rgb(theme::OVERLAY0)).child("esc")),
+                        .child(div().text_color(rgb(theme::OVERLAY2)).child("esc")),
                 ),
         )
     }
@@ -261,7 +261,7 @@ impl Elsewhere {
             .rounded_md()
             .border_1()
             .border_dashed()
-            .border_color(rgb(theme::OVERLAY0))
+            .border_color(rgb(theme::OVERLAY2))
             .drag_over::<DragRow>(|style, _, _, _| {
                 style
                     .border_color(rgb(theme::BLUE))

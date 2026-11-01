@@ -243,7 +243,7 @@ impl Elsewhere {
                 marker
                     .day
                     .clone()
-                    .map(|day| div().text_xs().text_color(rgb(theme::OVERLAY0)).child(day)),
+                    .map(|day| div().text_xs().text_color(rgb(theme::OVERLAY2)).child(day)),
             )
             .into_any_element()
     }

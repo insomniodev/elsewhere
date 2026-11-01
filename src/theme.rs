@@ -14,8 +14,8 @@ pub(crate) const NIGHT: u32 = 0x11111b99;
 pub(crate) const ZONE_LINE: u32 = 0x45475a;
 /// Edges and marks a step stronger than `SURFACE0`.
 pub(crate) const SURFACE1: u32 = 0x45475a;
-/// Text that steps back.
-pub(crate) const OVERLAY0: u32 = 0x6c7086;
+/// Text that steps back; the dimmest tier that clears 4.5:1 on `BASE` (overlay0 was 3.4:1).
+pub(crate) const OVERLAY2: u32 = 0x9399b2;
 pub(crate) const SUBTEXT0: u32 = 0xa6adc8;
 pub(crate) const TEXT: u32 = 0xcdd6f4;
 /// A time pinned by typing it into a row.

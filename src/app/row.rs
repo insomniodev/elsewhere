@@ -139,7 +139,7 @@ impl Elsewhere {
             .flex()
             .items_center()
             .pl(WASH)
-            .text_color(rgb(theme::OVERLAY0))
+            .text_color(rgb(theme::OVERLAY2))
             .child("search for a city to start your list")
     }
 
@@ -215,7 +215,7 @@ impl Elsewhere {
                             .child(label),
                     )
                     .children(
-                        day.map(|day| div().text_xs().text_color(rgb(theme::OVERLAY0)).child(day)),
+                        day.map(|day| div().text_xs().text_color(rgb(theme::OVERLAY2)).child(day)),
                     )
                     .child(match &self.editing {
                         Some((editing, input)) if *editing == geonameid => {
