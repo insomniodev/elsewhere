@@ -193,16 +193,41 @@ fn day(here: Date, there: Date) -> Option<String> {
     }
 }
 
-/// When `zone`'s wall clock reads `text` today over there, held in home's
-/// zone so day hints stay relative to home. Both "HH:MM" and "h:mm am" are
-/// accepted whatever the display format, so typing need not match the row.
-pub fn pin(text: &str, zone: &TimeZone, now: &Zoned) -> Option<Zoned> {
+/// "tomorrow", "yesterday" or "Tue 4 Nov": `date` as said on `today`. The
+/// year is left out; a what-if rarely strays that far.
+pub fn day_name(date: Date, today: Date) -> String {
+    match date.since((Unit::Day, today)).map(|span| span.get_days()) {
+        Ok(0) => "today".to_string(),
+        Ok(1) => "tomorrow".to_string(),
+        Ok(-1) => "yesterday".to_string(),
+        _ => date.strftime("%a %-d %b").to_string(),
+    }
+}
+
+/// The day a pinned reading in `zone` falls on, named from `real`, the real
+/// clock held in here's zone. `None` while the pin is on today here, where
+/// the reading speaks for itself. Named in `zone` so the date matches the
+/// time beside it, even when here has already moved on.
+pub fn pinned_day(pinned: &Zoned, zone: &TimeZone, real: &Zoned) -> Option<String> {
+    let today = real.with_time_zone(pinned.time_zone().clone()).date();
+    if pinned.date() == today {
+        return None;
+    }
+    Some(day_name(pinned.with_time_zone(zone.clone()).date(), today))
+}
+
+/// When `zone`'s wall clock reads `text` on the day `reference` reads over
+/// there, held in `reference`'s zone, home, so day hints stay relative to
+/// home. The reference is the pin being edited, else now, so typing a time
+/// keeps the day being explored. Both "HH:MM" and "h:mm am" are accepted
+/// whatever the display format, so typing need not match the row.
+pub fn pin(text: &str, zone: &TimeZone, reference: &Zoned) -> Option<Zoned> {
     let (hour, minute) = wall(text)?;
-    let date = now.with_time_zone(zone.clone()).date();
+    let date = reference.with_time_zone(zone.clone()).date();
     // A time a DST change skips or repeats resolves to jiff's compatible
     // choice rather than failing.
     let there = date.at(hour, minute, 0, 0).to_zoned(zone.clone()).ok()?;
-    Some(there.with_time_zone(now.time_zone().clone()))
+    Some(there.with_time_zone(reference.time_zone().clone()))
 }
 
 /// As a 24-hour clock. A trailing "am" or "pm", in any case and with or
@@ -265,6 +290,7 @@ impl Zones {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jiff::Span;
 
     /// An instant, read from the given zone as home.
     fn at(instant: &str, home: &str) -> Zoned {
@@ -454,6 +480,73 @@ mod tests {
         ] {
             assert_eq!(pin(text, &zone("UTC"), &now), None, "{text:?}");
         }
+    }
+
+    #[test]
+    fn a_pin_keeps_the_reference_day() {
+        // Pinned on tomorrow, 2026-11-02 at 06:45 here; 09:00 typed into
+        // Quito stays on the 2nd rather than jumping back to the 1st.
+        let reference = at("2026-11-02T11:45:00Z", "America/Guayaquil");
+        let pinned = pin("09:00", &zone("America/Guayaquil"), &reference).expect("a valid pin");
+        assert_eq!(
+            pinned.to_string(),
+            "2026-11-02T09:00:00-05:00[America/Guayaquil]"
+        );
+        // The day is the reference's over there: 23:00Z on the 1st is
+        // already the 2nd in Tokyo, so 09:00 there is the 2nd's.
+        let reference = at("2026-11-01T23:00:00Z", "America/Guayaquil");
+        let pinned = pin("09:00", &zone("Asia/Tokyo"), &reference).expect("a valid pin");
+        assert_eq!(pinned.timestamp().to_string(), "2026-11-02T00:00:00Z");
+    }
+
+    #[test]
+    fn days_near_today_are_named_and_the_rest_dated() {
+        let today = jiff::civil::date(2026, 11, 1);
+        let day = |days: i64| today.checked_add(Span::new().days(days)).expect("a date");
+        assert_eq!(day_name(day(0), today), "today");
+        assert_eq!(day_name(day(1), today), "tomorrow");
+        assert_eq!(day_name(day(-1), today), "yesterday");
+        assert_eq!(day_name(day(3), today), "Wed 4 Nov");
+        assert_eq!(day_name(day(-2), today), "Fri 30 Oct");
+        assert_eq!(day_name(day(40), today), "Fri 11 Dec");
+    }
+
+    #[test]
+    fn a_pin_on_today_here_names_no_day() {
+        let real = at("2026-11-01T16:45:00Z", "America/Guayaquil");
+        let pinned = at("2026-11-02T04:00:00Z", "America/Guayaquil");
+        // 23:00 here on the 1st, already the 2nd in Tokyo: still today here.
+        assert_eq!(pinned_day(&pinned, &zone("Asia/Tokyo"), &real), None);
+        assert_eq!(pinned_day(&pinned, &zone("America/Guayaquil"), &real), None);
+    }
+
+    #[test]
+    fn a_pin_past_midnight_here_names_its_day() {
+        let real = at("2026-11-01T16:45:00Z", "America/Guayaquil");
+        // 01:45 here on the 2nd.
+        let pinned = at("2026-11-02T06:45:00Z", "America/Guayaquil");
+        let here = zone("America/Guayaquil");
+        assert_eq!(
+            pinned_day(&pinned, &here, &real).as_deref(),
+            Some("tomorrow")
+        );
+        // Read in Tokyo it is 15:45 on the 2nd: named by Tokyo's date.
+        assert_eq!(
+            pinned_day(&pinned, &zone("Asia/Tokyo"), &real).as_deref(),
+            Some("tomorrow")
+        );
+        // Three days on, dated.
+        let pinned = at("2026-11-04T14:00:00Z", "America/Guayaquil");
+        assert_eq!(
+            pinned_day(&pinned, &here, &real).as_deref(),
+            Some("Wed 4 Nov")
+        );
+        // A day back.
+        let pinned = at("2026-11-01T02:00:00Z", "America/Guayaquil");
+        assert_eq!(
+            pinned_day(&pinned, &here, &real).as_deref(),
+            Some("yesterday")
+        );
     }
 
     #[test]

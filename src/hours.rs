@@ -43,6 +43,18 @@ impl Day {
             .contains(&elapsed)
             .then_some((elapsed / 3600) as usize)
     }
+
+    /// How many hours into the day `at` falls, minutes as the fraction, so a
+    /// mark can sit within its hour. `None` outside the day.
+    pub fn position(&self, at: &Zoned) -> Option<f32> {
+        let elapsed = at
+            .timestamp()
+            .duration_since(self.start.timestamp())
+            .as_secs_f64();
+        (0.0..self.seconds as f64)
+            .contains(&elapsed)
+            .then_some((elapsed / 3600.0) as f32)
+    }
 }
 
 #[cfg(test)]
@@ -91,6 +103,18 @@ mod tests {
             .checked_sub(Span::new().seconds(1))
             .expect("a second before row 1");
         assert_eq!(day.index(&just_before), Some(0));
+    }
+
+    #[test]
+    fn position_falls_within_the_hour_by_its_minutes() {
+        let day = Day::of(&at("2026-08-15T00:00:00Z", "UTC"));
+        assert_eq!(day.position(&at("2026-08-15T00:00:00Z", "UTC")), Some(0.0));
+        assert_eq!(
+            day.position(&at("2026-08-15T11:45:00Z", "UTC")),
+            Some(11.75)
+        );
+        assert_eq!(day.position(&at("2026-08-16T00:00:00Z", "UTC")), None);
+        assert_eq!(day.position(&at("2026-08-14T23:59:00Z", "UTC")), None);
     }
 
     #[test]

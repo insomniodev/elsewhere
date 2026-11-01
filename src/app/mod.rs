@@ -61,6 +61,7 @@ pub(crate) enum View {
 }
 
 /// A what-if time in effect.
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Pin {
     /// The row the time was typed into. `None` for a scrub on the map.
     pub(crate) anchor: Option<u32>,
@@ -77,6 +78,14 @@ pub(crate) struct Accent {
 }
 
 impl Pin {
+    /// A pin outlives its row's removal by reading as here, which keeps the
+    /// instant the user was looking at rather than dropping back to now.
+    pub(crate) fn forget(&mut self, geonameid: u32) {
+        if self.anchor == Some(geonameid) {
+            self.anchor = None;
+        }
+    }
+
     /// Typed and scrubbed times differ in color so they read apart at a glance.
     pub(crate) fn accent(&self) -> Accent {
         match self.anchor {
@@ -124,6 +133,9 @@ pub struct Elsewhere {
     format: clock::Format,
     /// `None` follows the real clock.
     pinned: Option<Pin>,
+    /// `pinned` as it was when the editor opened, live time included, so
+    /// cancelling puts back exactly that. `None` while no editor is open.
+    pre_edit: Option<Option<Pin>>,
     /// The row being typed over, and its input.
     editing: Option<(u32, Entity<TextInput>)>,
     /// Doubles as the list's bounds, which the scrollbar reads.
@@ -212,6 +224,7 @@ impl Elsewhere {
             here,
             drag: None,
             pinned: None,
+            pre_edit: None,
             editing: None,
             saved_scroll: ScrollHandle::new(),
             land: Rc::new(land::load()),
@@ -301,19 +314,39 @@ impl Elsewhere {
         cx.notify();
     }
 
-    /// Moves the shown instant `steps` quarter hours. A step has no row behind
-    /// it, so it keeps any anchor already pinned and otherwise reads as here.
+    /// Moves the shown instant `steps` quarter hours. A pin moves by whole
+    /// quarters from where it is; from the real clock the first step snaps to
+    /// the quarter boundary in the direction of travel, so from 12:04 Later
+    /// lands on 12:15 and Earlier on 12:00, and the rest follow 15 minutes
+    /// apart. The map's scrub steps through here too. A step has no row
+    /// behind it, so it keeps any anchor already pinned and otherwise reads
+    /// as here.
     pub(super) fn nudge(&mut self, steps: i64, cx: &mut Context<Self>) {
         let anchor = self.pinned.as_ref().and_then(|pin| pin.anchor);
-        let from = match &self.pinned {
-            Some(pin) => pin.at.clone(),
-            None => quarter_hour(&Zoned::now()),
+        let at = match &self.pinned {
+            Some(pin) => pin
+                .at
+                .checked_add(Span::new().minutes(steps * STEP_MINUTES))
+                .ok(),
+            None => from_live(&Zoned::now(), steps),
         };
-        let Ok(at) = from.checked_add(Span::new().minutes(steps * STEP_MINUTES)) else {
+        let Some(at) = at else {
             return;
         };
         self.pinned = Some(Pin { anchor, at });
         cx.notify();
+    }
+
+    /// Taken as an editor opens, for `restore_pin`.
+    pub(super) fn snapshot_pin(&mut self) {
+        self.pre_edit = Some(self.pinned.clone());
+    }
+
+    /// Puts back the pin, or live time, from before the editor opened.
+    pub(super) fn restore_pin(&mut self) {
+        if let Some(pinned) = self.pre_edit.take() {
+            self.pinned = pinned;
+        }
     }
 
     /// An open editor would keep showing the typed time, so it closes first.
@@ -329,16 +362,26 @@ fn unreadable(error: &str, what: &str) -> SharedString {
     format!("{error}; {what} won't be saved").into()
 }
 
-/// Truncated to the quarter hour, so steps from the real clock land on round
-/// times.
-fn quarter_hour(at: &Zoned) -> Zoned {
-    at.round(
-        ZonedRound::new()
-            .smallest(Unit::Minute)
-            .increment(STEP_MINUTES)
-            .mode(RoundMode::Trunc),
-    )
-    .expect("a quarter hour is a valid rounding increment")
+/// `steps` quarter hours from the real clock, the first of them to the next
+/// quarter boundary that way: from 12:04, +1 is 12:15 and −1 is 12:00. A time
+/// already on a boundary moves a whole quarter, so a step always moves.
+fn from_live(now: &Zoned, steps: i64) -> Option<Zoned> {
+    let quarter = |n: i64| Span::new().minutes(n * STEP_MINUTES);
+    let floor = now
+        .round(
+            ZonedRound::new()
+                .smallest(Unit::Minute)
+                .increment(STEP_MINUTES)
+                .mode(RoundMode::Trunc),
+        )
+        .ok()?;
+    let boundary = match steps.signum() {
+        0 => return Some(now.clone()),
+        1 => floor.checked_add(quarter(1)).ok()?,
+        _ if floor == *now => floor.checked_sub(quarter(1)).ok()?,
+        _ => floor,
+    };
+    boundary.checked_add(quarter(steps - steps.signum())).ok()
 }
 
 /// Re-renders on each minute boundary rather than polling.
@@ -458,5 +501,60 @@ impl Render for Elsewhere {
             .child(self.render_footer(dragging, cx))
             // Last, so they lie over everything else.
             .children(resize::handles(window))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at(datetime: &str) -> Zoned {
+        format!("{datetime}[America/Guayaquil]")
+            .parse()
+            .expect("a valid zoned datetime")
+    }
+
+    fn time(zoned: Option<Zoned>) -> String {
+        zoned.expect("a step").time().to_string()
+    }
+
+    #[test]
+    fn the_first_step_from_live_lands_on_the_next_quarter_that_way() {
+        let now = at("2026-11-01T12:04:30");
+        assert_eq!(time(from_live(&now, 1)), "12:15:00");
+        assert_eq!(time(from_live(&now, -1)), "12:00:00");
+        // The rest are whole quarters on from there.
+        assert_eq!(time(from_live(&now, 3)), "12:45:00");
+        assert_eq!(time(from_live(&now, -3)), "11:30:00");
+    }
+
+    #[test]
+    fn a_live_time_on_a_boundary_still_moves_a_quarter() {
+        let now = at("2026-11-01T12:00:00");
+        assert_eq!(time(from_live(&now, 1)), "12:15:00");
+        assert_eq!(time(from_live(&now, -1)), "11:45:00");
+    }
+
+    #[test]
+    fn the_first_step_crosses_midnight() {
+        let now = at("2026-11-01T23:50:00");
+        let next = from_live(&now, 1).expect("a step");
+        assert_eq!(
+            next.to_string(),
+            "2026-11-02T00:00:00-05:00[America/Guayaquil]"
+        );
+    }
+
+    #[test]
+    fn removing_the_anchor_keeps_the_instant_as_here() {
+        let at = at("2026-11-02T01:45:00");
+        let mut pin = Pin {
+            anchor: Some(3652462),
+            at: at.clone(),
+        };
+        pin.forget(2643743);
+        assert_eq!(pin.anchor, Some(3652462));
+        pin.forget(3652462);
+        assert_eq!(pin, Pin { anchor: None, at });
     }
 }

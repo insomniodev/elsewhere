@@ -3,7 +3,7 @@
 
 mod header;
 
-use gpui::{Axis, Context, ElementId, Pixels, canvas, div, point, prelude::*, px, rgb, rgba};
+use gpui::{Axis, Context, Div, ElementId, Pixels, canvas, div, point, prelude::*, px, rgb, rgba};
 use jiff::Zoned;
 use jiff::tz::TimeZone;
 
@@ -30,6 +30,9 @@ const INSET: Pixels = px(8.);
 
 const BAR: Pixels = px(22.);
 
+/// The now line's hover band, so a 1px line can still be pointed at.
+const NOW_REACH: Pixels = px(7.);
+
 struct Column {
     /// `None` for here's own column, drawn only while no saved city is in
     /// the zone.
@@ -37,6 +40,17 @@ struct Column {
     /// `None` when the zone is unknown: the column keeps its head and rule but
     /// no labels.
     zone: Option<TimeZone>,
+}
+
+/// Where the real time falls, `hours` into the day: a label's hour sits
+/// mid-slot, so the line runs from there down by its minutes.
+fn now_band(hours: f32) -> Div {
+    div()
+        .absolute()
+        .left_0()
+        .right_0()
+        .top(ROW / 2. + ROW * hours - NOW_REACH / 2.)
+        .h(NOW_REACH)
 }
 
 impl Elsewhere {
@@ -141,17 +155,35 @@ impl Elsewhere {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let shown = day.index(now);
+        // While pinned the bar follows the pin, so a line keeps the real time.
+        let live = self.pinned.as_ref().and_then(|_| {
+            let real = Zoned::now();
+            Some((day.position(&real)?, real))
+        });
         div()
             .relative()
             .flex()
             .flex_row()
-            // First, so the columns' labels and rules paint over it.
+            // First, so the columns' labels and rules paint over them.
             .children(shown.map(|i| self.render_highlight(i)))
+            .children(live.as_ref().map(|(hours, _)| {
+                now_band(*hours)
+                    .flex()
+                    .items_center()
+                    .child(div().w_full().h(px(1.)).bg(rgba(theme::NOW_LINE)))
+            }))
             .children(
                 columns
                     .iter()
                     .map(|column| self.render_column(day, column, shown, now, cx)),
             )
+            // The line's hover band goes last, so it is on top to be pointed at.
+            .children(live.map(|(hours, real)| {
+                let time = clock::reading(&real, &self.here.zone, self.format).time;
+                now_band(hours)
+                    .id("now-line")
+                    .tooltip(Tooltip::text(format!("now · {time}")))
+            }))
     }
 
     /// Each hour is a `ROW` slot with its label in the middle, so the hour

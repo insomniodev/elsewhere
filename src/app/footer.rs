@@ -1,5 +1,6 @@
 use gpui::{Context, Pixels, Window, div, prelude::*, px, rgb, rgba};
 use jiff::Zoned;
+use jiff::tz::TimeZone;
 
 use super::button::Button;
 use super::drag::DragRow;
@@ -175,34 +176,43 @@ impl Elsewhere {
     }
 
     /// A pin with no row reads here. Shown only while pinned:
-    /// entering a mode on purpose earns the layout shift.
+    /// entering a mode on purpose earns the layout shift. Names the pinned
+    /// day once it leaves today, since the rows' day tags are relative to it,
+    /// and keeps the real time in view.
     pub(super) fn render_banner(
         &self,
         now: &Zoned,
         cx: &mut Context<Self>,
     ) -> Option<impl IntoElement + use<>> {
         let pin = self.pinned.as_ref()?;
+        let real = Zoned::now();
+        let read = |zone: &TimeZone| {
+            let time = clock::reading(now, zone, self.format).time;
+            match clock::pinned_day(now, zone, &real) {
+                Some(day) => format!("{time} {day}"),
+                None => time,
+            }
+        };
         let label = match pin.anchor {
             Some(anchor) => {
                 let city = self.index.city(anchor)?;
-                let time = self
+                let reading = self
                     .zones
                     .get(&city.timezone)
-                    .map(|zone| clock::reading(now, zone, self.format).time)
+                    .map(read)
                     .unwrap_or_else(|| clock::UNKNOWN.to_string());
-                format!("viewing {time} in {}", city.name)
+                format!("viewing {reading} in {}", city.name)
             }
-            None => {
-                let time = clock::reading(now, &self.here.zone, self.format).time;
-                format!("viewing {time} here")
-            }
+            None => format!("viewing {} here", read(&self.here.zone)),
         };
+        let live = clock::reading(&real, &self.here.zone, self.format).time;
         let accent = pin.accent();
         Some(
             div()
                 .flex()
                 .flex_row()
                 .justify_between()
+                .gap_2()
                 .items_center()
                 .h_6()
                 .px_2()
@@ -212,9 +222,33 @@ impl Elsewhere {
                 .bg(rgba(accent.tint))
                 .text_xs()
                 .text_color(rgb(accent.text))
-                .child(label)
+                // In a narrow window the real time gives way before the
+                // what-if, and both before the way back.
                 .child(
                     div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_row()
+                        .gap_1()
+                        .child(div().min_w_0().truncate().child(label))
+                        .child(
+                            div()
+                                .min_w_0()
+                                .truncate()
+                                .map(|mut live| {
+                                    // Shrink is weighted by size, so a heavy
+                                    // weight is what makes it go first.
+                                    live.style().flex_shrink = Some(1000.);
+                                    live
+                                })
+                                .text_color(rgb(theme::SUBTEXT0))
+                                .child(format!("· now {live}")),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex_none()
                         .flex()
                         .flex_row()
                         .items_center()

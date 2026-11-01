@@ -57,6 +57,9 @@ pub(super) fn mono(cx: &App) -> Option<SharedString> {
 impl Elsewhere {
     pub(super) fn delete(&mut self, geonameid: u32, window: &mut Window, cx: &mut Context<Self>) {
         self.saved.retain(|id| *id != geonameid);
+        if let Some(pin) = &mut self.pinned {
+            pin.forget(geonameid);
+        }
         self.persist(cx);
         if self
             .editing
@@ -79,13 +82,18 @@ impl Elsewhere {
     ) {
         let input = cx.new(|cx| TextInput::new(current, cx));
         window.focus(&input.focus_handle(cx));
+        // Not over one already open, which is still the editor's own pin.
+        if self.editing.is_none() {
+            self.snapshot_pin();
+        }
         cx.observe(&input, Self::retime).detach();
         self.editing = Some((geonameid, input));
         cx.notify();
     }
 
     /// Re-pins on each keystroke that reads as a time, so the other rows
-    /// follow as the user types.
+    /// follow as the user types. On the pin's day, if there is one, so a
+    /// typed time keeps the day being explored.
     fn retime(&mut self, input: Entity<TextInput>, cx: &mut Context<Self>) {
         let Some((geonameid, editor)) = &self.editing else {
             return;
@@ -93,9 +101,13 @@ impl Elsewhere {
         if *editor != input {
             return;
         }
+        let reference = self
+            .pinned
+            .as_ref()
+            .map_or_else(Zoned::now, |pin| pin.at.clone());
         if let Some(city) = self.index.city(*geonameid)
             && let Some(zone) = self.zones.get(&city.timezone)
-            && let Some(pinned) = clock::pin(input.read(cx).text(), zone, &Zoned::now())
+            && let Some(pinned) = clock::pin(input.read(cx).text(), zone, &reference)
         {
             self.pinned = Some(Pin {
                 anchor: Some(*geonameid),
@@ -111,12 +123,13 @@ impl Elsewhere {
     }
 
     fn cancel(&mut self, _: &Cancel, window: &mut Window, cx: &mut Context<Self>) {
-        self.pinned = None;
+        self.restore_pin();
         self.close_editor(window, cx);
     }
 
     pub(super) fn close_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.editing = None;
+        self.pre_edit = None;
         window.focus(&self.picker.focus_handle(cx));
         cx.notify();
     }

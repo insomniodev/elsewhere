@@ -29,5 +29,7 @@ pub(crate) const MAUVE_TINT: u32 = 0xcba6f714;
 pub(crate) const MAUVE_EDGE: u32 = 0xcba6f740;
 /// Active or selected.
 pub(crate) const BLUE: u32 = 0x89b4fa;
+/// The real time while another is pinned: `BLUE` at 60%, for `rgba()`.
+pub(crate) const NOW_LINE: u32 = 0x89b4fa99;
 /// Destructive actions.
 pub(crate) const RED: u32 = 0xf38ba8;
