@@ -231,6 +231,12 @@ impl Elsewhere {
                             .border(px(1.5))
                             .border_color(rgb(theme::BLUE))
                     })
+                    // Lit as the list's row is washed, for a city just picked
+                    // or restored.
+                    .when(
+                        marker.geonameid.is_some() && self.revealed == marker.geonameid,
+                        |dot| dot.bg(rgb(theme::TEXT)),
+                    )
                     .group_hover("dot", |style| style.bg(rgb(theme::TEXT))),
             );
         // Here's marker neither drags nor edits, so a press on it pans.

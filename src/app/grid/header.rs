@@ -99,6 +99,11 @@ impl Elsewhere {
                 .when(dragging && self.drag == Some(geonameid), |name| {
                     name.opacity(0.4)
                 })
+                // As the list's row is washed, for a city just picked or
+                // restored.
+                .when(self.revealed == Some(geonameid), |name| {
+                    name.text_color(rgb(theme::TEXT))
+                })
                 .child(city.name.clone()),
         )
         .children(offset)

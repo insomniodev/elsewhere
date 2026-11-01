@@ -5,6 +5,7 @@ use gpui::{
     Window, actions, deferred, div, prelude::*, px, rgb,
 };
 
+use super::here::tag;
 use super::scrollbar::scrollbar;
 use crate::search::SearchIndex;
 use crate::theme;
@@ -26,6 +27,12 @@ pub(super) struct SearchPicker {
     results: Vec<u32>,
     /// Into `results`; meaningless while it is empty.
     selected: usize,
+    /// Whether the panel is up. A click away closes it but keeps the results,
+    /// so Enter still picks the highlighted one; the input's next
+    /// notification, a click in it or a key, reopens it.
+    open: bool,
+    /// Geonameids on the list, which the results mark.
+    saved: Vec<u32>,
     /// Doubles as the panel's bounds, which the dismiss guard and the
     /// scrollbar read.
     scroll: ScrollHandle,
@@ -50,6 +57,8 @@ impl SearchPicker {
             query: String::new(),
             results: Vec::new(),
             selected: 0,
+            open: true,
+            saved: Vec::new(),
             scroll: ScrollHandle::new(),
         }
     }
@@ -58,8 +67,13 @@ impl SearchPicker {
     /// cursor moves included, and re-searches only when the text changed.
     fn search(&mut self, input: Entity<TextInput>, cx: &mut Context<Self>) {
         if input.read(cx).text() == self.query {
+            if !self.open {
+                self.open = true;
+                cx.notify();
+            }
             return;
         }
+        self.open = true;
         self.query = input.read(cx).text().to_string();
         self.results = self
             .index
@@ -72,11 +86,22 @@ impl SearchPicker {
         cx.notify();
     }
 
-    /// Leaves `query` alone: clearing it would let the next input notification
-    /// reopen the panel.
+    /// Leaves `query` and `results` alone, which Enter still acts on.
     fn dismiss(&mut self, cx: &mut Context<Self>) {
-        self.results.clear();
+        self.open = false;
         cx.notify();
+    }
+
+    /// For the list to mark; the owner calls it each frame.
+    pub(super) fn set_saved(&mut self, saved: &[u32]) {
+        if self.saved != saved {
+            self.saved = saved.to_vec();
+        }
+    }
+
+    /// Nothing matched what was typed, which is told rather than left blank.
+    fn missed(&self) -> bool {
+        self.open && self.results.is_empty() && !self.query.trim().is_empty()
     }
 
     /// `query` is cleared with the input text so `search()` stays quiet.
@@ -85,6 +110,7 @@ impl SearchPicker {
         self.query.clear();
         self.results.clear();
         self.selected = 0;
+        self.open = true;
     }
 
     /// The query, not the results: a dismissed panel leaves the text in the
@@ -107,7 +133,7 @@ impl SearchPicker {
 
     fn clear(&mut self, _: &Clear, _window: &mut Window, cx: &mut Context<Self>) {
         // Nothing to clear, so the window gets the key.
-        if self.query.is_empty() && self.results.is_empty() {
+        if self.query.is_empty() {
             cx.propagate();
             return;
         }
@@ -119,6 +145,7 @@ impl SearchPicker {
         if self.results.is_empty() {
             return;
         }
+        self.open = true;
         self.selected = self.selected.saturating_sub(1);
         self.scroll.scroll_to_item(self.selected);
         cx.notify();
@@ -128,6 +155,7 @@ impl SearchPicker {
         if self.results.is_empty() {
             return;
         }
+        self.open = true;
         self.selected = (self.selected + 1).min(self.results.len() - 1);
         self.scroll.scroll_to_item(self.selected);
         cx.notify();
@@ -152,80 +180,104 @@ impl Render for SearchPicker {
             .on_action(cx.listener(Self::move_up))
             .on_action(cx.listener(Self::move_down))
             .child(self.input.clone())
-            .children((!self.results.is_empty()).then(|| {
-                deferred(
-                    div()
-                        .occlude()
-                        .absolute()
-                        .top_full()
-                        .left_0()
-                        .right_0()
-                        .mt_1()
-                        .p_1()
-                        .rounded_md()
-                        .bg(rgb(theme::MANTLE))
-                        .border_1()
-                        .border_color(rgb(theme::SURFACE0))
-                        .shadow_lg()
-                        .on_mouse_down_out(cx.listener(
-                            |this, event: &MouseDownEvent, _window, cx| {
-                                // A click on the input above keeps it open.
-                                if event.position.y < this.scroll.bounds().top() {
-                                    return;
-                                }
-                                this.dismiss(cx)
-                            },
-                        ))
-                        .child(
-                            div()
-                                .id("results")
-                                .flex()
-                                .flex_col()
-                                .gap_0p5()
-                                .max_h(window.viewport_size().height - px(80.))
-                                .overflow_y_scroll()
-                                .track_scroll(&self.scroll)
-                                .children(self.results.iter().enumerate().filter_map(
-                                    |(i, geonameid)| {
-                                        let city = self.index.city(*geonameid)?;
-                                        Some(
-                                            div()
-                                                .id(("result", *geonameid as usize))
-                                                .px_2()
-                                                .py_1()
-                                                .rounded_md()
-                                                // The overflow `truncate`
-                                                // sets lets a flex item shrink
-                                                // below its content, so in a
-                                                // short window rows would
-                                                // squash instead of scrolling.
-                                                .flex_shrink_0()
-                                                .truncate()
-                                                .cursor_pointer()
-                                                .when(i == self.selected, |row| {
-                                                    row.bg(rgb(theme::SURFACE0))
-                                                })
-                                                .hover(|style| style.bg(rgb(theme::SURFACE0)))
-                                                .active(|style| style.opacity(0.8))
-                                                .on_click(cx.listener({
-                                                    let geonameid = *geonameid;
-                                                    move |this, _event, _window, cx| {
-                                                        this.pick(geonameid, cx)
-                                                    }
-                                                }))
-                                                .child(self.index.label(city)),
+            .children(
+                ((self.open && !self.results.is_empty()) || self.missed()).then(|| {
+                    deferred(
+                        div()
+                            .occlude()
+                            .absolute()
+                            .top_full()
+                            .left_0()
+                            .right_0()
+                            .mt_1()
+                            .p_1()
+                            .rounded_md()
+                            .bg(rgb(theme::MANTLE))
+                            .border_1()
+                            .border_color(rgb(theme::SURFACE0))
+                            .shadow_lg()
+                            .on_mouse_down_out(cx.listener(
+                                |this, event: &MouseDownEvent, _window, cx| {
+                                    // A click on the input above keeps it open.
+                                    if event.position.y < this.scroll.bounds().top() {
+                                        return;
+                                    }
+                                    this.dismiss(cx)
+                                },
+                            ))
+                            .child(
+                                div()
+                                    .id("results")
+                                    .flex()
+                                    .flex_col()
+                                    .gap_0p5()
+                                    .max_h(window.viewport_size().height - px(80.))
+                                    .overflow_y_scroll()
+                                    .track_scroll(&self.scroll)
+                                    .children(self.missed().then(|| {
+                                        div().px_2().py_1().child("No cities found").child(
+                                            div().text_sm().text_color(rgb(theme::OVERLAY2)).child(
+                                                "Try the city's name alone, or add a \
+                                                     region or country after a comma.",
+                                            ),
                                         )
-                                    },
-                                )),
-                        )
-                        // After the rows, so a press on the bar is its own.
-                        .child(scrollbar(
-                            "search-bar",
-                            &self.scroll,
-                            Axis::Vertical,
-                            px(2.),
-                        )),
-                )
-            }))
+                                    }))
+                                    .children(self.results.iter().enumerate().filter_map(
+                                        |(i, geonameid)| {
+                                            let city = self.index.city(*geonameid)?;
+                                            Some(
+                                                div()
+                                                    .id(("result", *geonameid as usize))
+                                                    .px_2()
+                                                    .py_1()
+                                                    .rounded_md()
+                                                    // The overflow `truncate`
+                                                    // sets lets a flex item shrink
+                                                    // below its content, so in a
+                                                    // short window rows would
+                                                    // squash instead of scrolling.
+                                                    .flex_shrink_0()
+                                                    .flex()
+                                                    .flex_row()
+                                                    .items_center()
+                                                    .gap_2()
+                                                    .cursor_pointer()
+                                                    .when(i == self.selected, |row| {
+                                                        row.bg(rgb(theme::SURFACE0))
+                                                    })
+                                                    .hover(|style| style.bg(rgb(theme::SURFACE0)))
+                                                    .active(|style| style.opacity(0.8))
+                                                    .on_click(cx.listener({
+                                                        let geonameid = *geonameid;
+                                                        move |this, _event, _window, cx| {
+                                                            this.pick(geonameid, cx)
+                                                        }
+                                                    }))
+                                                    .child(
+                                                        div()
+                                                            .flex_1()
+                                                            .min_w_0()
+                                                            .truncate()
+                                                            .child(self.index.label(city)),
+                                                    )
+                                                    .children(
+                                                        self.saved
+                                                            .contains(geonameid)
+                                                            .then(|| tag("saved")),
+                                                    ),
+                                            )
+                                        },
+                                    )),
+                            )
+                            // After the rows, so a press on the bar is its own.
+                            .child(scrollbar(
+                                "search-bar",
+                                &self.scroll,
+                                Axis::Vertical,
+                                px(2.),
+                            )),
+                    )
+                }),
+            )
     }
 }

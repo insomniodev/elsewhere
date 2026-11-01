@@ -1,5 +1,5 @@
 //! One message at a time, in a bar above the footer: what went wrong on disk
-//! now, and later an undo or an empty search. A new notice replaces the old.
+//! now, or an undo. A new notice replaces the old.
 
 use std::rc::Rc;
 use std::time::Duration;

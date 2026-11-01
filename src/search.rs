@@ -1,5 +1,5 @@
 //! At ~64k cities a scored linear scan per keystroke is fine. Only the
-//! lowercased text is precomputed, so matching allocates nothing.
+//! lowercased text is precomputed, so matching allocates nothing per city.
 
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
@@ -19,6 +19,8 @@ struct Entry {
     ascii: String,
     /// `None` when it would equal `ascii`.
     name: Option<String>,
+    /// Lowercased and unaccented, for the qualifiers after a comma.
+    places: [String; 2],
 }
 
 impl SearchIndex {
@@ -39,7 +41,13 @@ impl SearchIndex {
                 let ascii = city.asciiname.to_lowercase();
                 let name = city.name.to_lowercase();
                 let name = (name != ascii).then_some(name);
-                Entry { city, ascii, name }
+                let places = [fold(&city.admin1), fold(&city.country)];
+                Entry {
+                    city,
+                    ascii,
+                    name,
+                    places,
+                }
             })
             .collect();
 
@@ -66,17 +74,26 @@ impl SearchIndex {
     }
 
     /// Case-insensitive, against both the local and the unaccented name, so
-    /// "sant julia" and "julià" both find Sant Julià de Lòria.
+    /// "sant julia" and "julià" both find Sant Julià de Lòria. Commas split off
+    /// qualifiers, each of which must start the city's region or country, so
+    /// "paris, fr" and "Springfield, Missouri" narrow the name before them.
     pub fn search(&self, query: &str, limit: usize) -> Vec<&City> {
-        let query = query.trim().to_lowercase();
-        if query.is_empty() || limit == 0 {
+        let mut parts = query.split(',');
+        let name = parts.next().unwrap_or_default().trim().to_lowercase();
+        let qualifiers: Vec<String> = parts
+            .map(str::trim)
+            .filter(|part| !part.is_empty())
+            .map(fold)
+            .collect();
+        if name.is_empty() || limit == 0 {
             return Vec::new();
         }
 
         let mut hits: Vec<(Rank, &City)> = self
             .entries
             .iter()
-            .filter_map(|entry| Some((entry.rank(&query)?, &entry.city)))
+            .filter(|entry| entry.qualified(&qualifiers))
+            .filter_map(|entry| Some((entry.rank(&name)?, &entry.city)))
             .collect();
         hits.sort_unstable_by_key(|(rank, city)| (*rank, Reverse(city.population), city.geonameid));
         hits.truncate(limit);
@@ -94,6 +111,15 @@ impl SearchIndex {
 }
 
 impl Entry {
+    /// Each qualifier starts the region or the country.
+    fn qualified(&self, qualifiers: &[String]) -> bool {
+        qualifiers.iter().all(|qualifier| {
+            self.places
+                .iter()
+                .any(|place| place.starts_with(qualifier.as_str()))
+        })
+    }
+
     fn rank(&self, query: &str) -> Option<Rank> {
         [Some(self.ascii.as_str()), self.name.as_deref()]
             .into_iter()
@@ -101,6 +127,37 @@ impl Entry {
             .filter_map(|haystack| rank(haystack, query))
             .min()
     }
+}
+
+/// Lowercase with the Latin accents the dataset's regions and countries use
+/// dropped, so "ile" finds Île-de-France. The dataset keeps no unaccented form
+/// of these, as it does of city names.
+fn fold(text: &str) -> String {
+    const GROUPS: [(&str, char); 14] = [
+        ("àáâãäåāăąǎạảấầẩẫậắằẳẵặ", 'a'),
+        ("çćĉċč", 'c'),
+        ("ďđḑ", 'd'),
+        ("èéêëēĕėęěẹẻẽếềểễệ", 'e'),
+        ("ğġĝģ", 'g'),
+        ("ḩħĥ", 'h'),
+        ("ìíîïĩīĭįıị", 'i'),
+        ("łĺļľ", 'l'),
+        ("ñńņň", 'n'),
+        ("òóôõöøōŏőơọỏốồổỗộớờởỡợ", 'o'),
+        ("śŝşšș", 's'),
+        ("ţťțŧ", 't'),
+        ("ùúûüũūŭůűųưụủứừửữự", 'u'),
+        ("źżž", 'z'),
+    ];
+    text.chars()
+        .flat_map(char::to_lowercase)
+        .map(|char| {
+            GROUPS
+                .iter()
+                .find(|(accented, _)| accented.contains(char))
+                .map_or(char, |(_, plain)| *plain)
+        })
+        .collect()
 }
 
 /// Lower is better.
@@ -274,6 +331,77 @@ mod tests {
         let index = index();
         assert_eq!(index.city(7).map(|city| city.name.as_str()), Some("Quito"));
         assert_eq!(index.city(404), None);
+    }
+
+    #[test]
+    fn a_qualifier_narrows_by_region_or_country() {
+        let index = index();
+        let ids = |query| -> Vec<u32> {
+            index
+                .search(query, 10)
+                .iter()
+                .map(|city| city.geonameid)
+                .collect()
+        };
+        assert_eq!(ids("springfield, missouri"), [2]);
+        assert_eq!(ids("Springfield , MISS"), [2]);
+        // The country is the same for all of them.
+        assert_eq!(ids("springfield, test"), [2, 1, 3, 4, 5]);
+        assert_eq!(ids("springfield, testland, illinois"), [1]);
+        assert!(ids("springfield, france").is_empty());
+        // A region must start with it, not merely contain it.
+        assert!(ids("springfield, souri").is_empty());
+    }
+
+    #[test]
+    fn an_empty_qualifier_is_ignored_and_a_bare_one_matches_nothing() {
+        let index = index();
+        assert_eq!(index.search("quito,", 10).len(), 1);
+        assert_eq!(index.search("quito, ,  ", 10).len(), 1);
+        assert!(index.search(", testland", 10).is_empty());
+    }
+
+    #[test]
+    fn qualifiers_ignore_accents() {
+        let index = SearchIndex::new(vec![
+            city(1, "Paris", "", "Île-de-France", 2_000_000),
+            city(2, "Paris", "", "Texas", 25_000),
+        ]);
+        assert_eq!(index.search("paris, ile", 10).len(), 1);
+        assert_eq!(index.search("paris, Île-de", 10)[0].geonameid, 1);
+    }
+
+    #[test]
+    fn qualifiers_keep_the_ranking() {
+        let index = index();
+        let ids: Vec<u32> = index
+            .search("springfield, testland", 10)
+            .iter()
+            .map(|city| city.geonameid)
+            .collect();
+        let plain: Vec<u32> = index
+            .search("springfield", 10)
+            .iter()
+            .map(|city| city.geonameid)
+            .collect();
+        assert_eq!(ids, plain);
+    }
+
+    #[test]
+    fn real_places_qualify_by_country_and_region() {
+        let index = SearchIndex::new(cities::load());
+        let found = index.search("Paris, France", 5);
+        assert_eq!(found[0].name, "Paris");
+        assert_eq!(found[0].country, "France");
+        assert!(found.iter().all(|city| city.country == "France"));
+
+        let found = index.search("paris, fr", 5);
+        assert_eq!(found[0].country, "France");
+
+        let found = index.search("Springfield, Missouri", 5);
+        assert_eq!(found[0].name, "Springfield");
+        assert_eq!(found[0].admin1, "Missouri");
+        assert!(found.iter().all(|city| city.admin1 == "Missouri"));
     }
 
     #[test]

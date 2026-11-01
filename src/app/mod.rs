@@ -332,13 +332,11 @@ impl Elsewhere {
                 self.zones.resolve(&city.timezone);
             }
             self.persist(cx);
-            // Only the hand-arranged order appends at the end; westward drops
-            // the new row wherever its longitude falls.
-            if !self.westward {
-                self.saved_scroll.scroll_to_bottom();
-            }
         }
-        cx.notify();
+        // New or already there, a pick shows where its row is: westward drops
+        // a new one wherever its longitude falls, and a saved one may be off
+        // screen.
+        self.reveal_row(geonameid, cx);
     }
 
     /// Moves the shown instant `steps` quarter hours. A pin moves by whole
@@ -459,6 +457,8 @@ impl Render for Elsewhere {
         // A search in progress floats its results over the list, so the hint
         // waits until the input is clear again.
         let empty = order.is_empty() && !self.picker.read(cx).searching();
+        self.picker
+            .update(cx, |picker, _| picker.set_saved(&self.saved));
         // A saved city in the zone stands in for here's row.
         let here_row = self.here.city.is_none();
         if self.reveal_pending {
