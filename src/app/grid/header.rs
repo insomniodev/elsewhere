@@ -1,5 +1,6 @@
-//! A head's name is its drag handle, as the map's dot is. Set flush right over
-//! the labels, as a calendar sets its zone names.
+//! A head's name is its drag handle, as the map's dot is, though without a
+//! grab cursor: the bin is its only drop target. Set flush right over the
+//! labels, as a calendar sets its zone names.
 
 use gpui::{Context, Pixels, Styled, div, prelude::*, px, rgb};
 use jiff::Zoned;
@@ -91,8 +92,10 @@ impl Elsewhere {
             shortened(div().id(("head", geonameid as usize)))
                 .text_color(rgb(theme::SUBTEXT0))
                 .tooltip(Tooltip::text(tip))
-                .cursor_grab()
-                .on_drag(DragRow { geonameid, label }, Self::drag_preview(cx))
+                .on_drag(
+                    DragRow::new(geonameid, label, false),
+                    Self::drag_preview(cx),
+                )
                 .when(dragging && self.drag == Some(geonameid), |name| {
                     name.opacity(0.4)
                 })

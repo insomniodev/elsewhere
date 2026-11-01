@@ -2,14 +2,14 @@
 //! share, so they keep a box and a state vocabulary.
 
 use gpui::{
-    AnyElement, AnyView, App, ClickEvent, Div, FocusHandle, Pixels, Rgba, SharedString, Stateful,
-    Svg, Window, WindowControlArea, div, prelude::*, px, rgb, svg, transparent_black,
+    AnyElement, AnyView, App, ClickEvent, Div, ElementId, FocusHandle, Pixels, Rgba, SharedString,
+    Stateful, Svg, Window, WindowControlArea, div, prelude::*, px, rgb, svg, transparent_black,
 };
 
 use crate::theme;
 
 /// At least WCAG 2.5.8's 24 x 24; wider so the icons keep their rhythm.
-const WIDTH: Pixels = px(28.);
+pub(super) const WIDTH: Pixels = px(28.);
 const HEIGHT: Pixels = px(24.);
 
 /// A disabled button stays visible to say what it would do, and why it can't.
@@ -39,7 +39,10 @@ enum Face {
 }
 
 pub(super) struct Button {
-    id: &'static str,
+    id: ElementId,
+    /// The id's name, which the icon's hover keys on. Siblings may share it,
+    /// as a group resolves to the nearest one up the tree.
+    group: &'static str,
     face: Face,
     rest: u32,
     hover: Option<u32>,
@@ -67,7 +70,8 @@ impl Button {
 
     fn with(id: &'static str, face: Face) -> Self {
         Self {
-            id,
+            id: id.into(),
+            group: id,
             face,
             rest: theme::OVERLAY2,
             hover: None,
@@ -82,6 +86,12 @@ impl Button {
             click: None,
             focus: None,
         }
+    }
+
+    /// One of many, as a button per row is.
+    pub(super) fn key(mut self, key: usize) -> Self {
+        self.id = (self.group, key).into();
+        self
     }
 
     /// The icon's color at rest.
@@ -176,6 +186,7 @@ impl Button {
     pub(super) fn build(self) -> Stateful<Div> {
         let Self {
             id,
+            group,
             face,
             rest,
             hover,
@@ -201,10 +212,10 @@ impl Button {
                     // An svg does not inherit its parent's color.
                     .text_color(rgb(color));
                 if let (Some(hover), true) = (hover, live) {
-                    icon = icon.group_hover(id, move |style| style.text_color(rgb(hover)));
+                    icon = icon.group_hover(group, move |style| style.text_color(rgb(hover)));
                 }
                 if let Some(drop) = drop {
-                    icon = (drop.icon)(icon, id);
+                    icon = (drop.icon)(icon, group);
                 }
                 icon.into_any_element()
             }
@@ -212,7 +223,7 @@ impl Button {
         };
         let mut button = div()
             .id(id)
-            .group(id)
+            .group(group)
             .map(|button| {
                 if labelled {
                     button.min_w(WIDTH).px_1p5()

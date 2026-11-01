@@ -7,9 +7,30 @@ use crate::saved;
 use crate::theme;
 
 /// The row that follows the cursor during a drag.
+#[derive(Clone)]
 pub(super) struct DragRow {
     pub(super) geonameid: u32,
     pub(super) label: String,
+    /// Where it can land, so a drag that cannot reorder does not look as if
+    /// it could.
+    hint: &'static str,
+}
+
+impl DragRow {
+    /// `reorders` where a drop between rows moves it: the list in the hand
+    /// order. Westward rows, the map's dots and the grid's heads only go to
+    /// the bin.
+    pub(super) fn new(geonameid: u32, label: String, reorders: bool) -> Self {
+        Self {
+            geonameid,
+            label,
+            hint: if reorders {
+                "move or drop on the bin"
+            } else {
+                "drop on the bin to remove"
+            },
+        }
+    }
 }
 
 impl Render for DragRow {
@@ -23,6 +44,12 @@ impl Render for DragRow {
             .opacity(0.9)
             .shadow_md()
             .child(self.label.clone())
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(rgb(theme::OVERLAY2))
+                    .child(self.hint),
+            )
     }
 }
 
@@ -52,10 +79,7 @@ impl Elsewhere {
                 cx.notify();
             })
             .ok();
-            cx.new(|_cx| DragRow {
-                geonameid: row.geonameid,
-                label: row.label.clone(),
-            })
+            cx.new(|_cx| row.clone())
         }
     }
 

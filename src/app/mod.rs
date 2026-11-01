@@ -132,6 +132,12 @@ pub struct Elsewhere {
     here: Here,
     /// The row being dragged, by geonameid.
     drag: Option<u32>,
+    /// The row washed to show where it is, until `reveal_timer` clears it.
+    revealed: Option<u32>,
+    /// Whether the list still has to scroll to `revealed`, which it can only
+    /// do from the frame's order.
+    reveal_pending: bool,
+    reveal_timer: Option<Task<()>>,
     // View preferences, kept in the settings file with the window's bounds.
     view: View,
     /// Ordered by longitude rather than by hand.
@@ -238,6 +244,9 @@ impl Elsewhere {
             zones,
             here,
             drag: None,
+            revealed: None,
+            reveal_pending: false,
+            reveal_timer: None,
             pinned: None,
             pre_edit: None,
             editing: None,
@@ -450,6 +459,19 @@ impl Render for Elsewhere {
         // A search in progress floats its results over the list, so the hint
         // waits until the input is clear again.
         let empty = order.is_empty() && !self.picker.read(cx).searching();
+        // A saved city in the zone stands in for here's row.
+        let here_row = self.here.city.is_none();
+        if self.reveal_pending {
+            self.reveal_pending = false;
+            if let Some(i) = self
+                .revealed
+                .and_then(|id| order.iter().position(|o| *o == id))
+            {
+                // Rows follow here's row, if it is shown. Held by the handle
+                // until the list is next laid out, should another view be up.
+                self.saved_scroll.scroll_to_item(i + usize::from(here_row));
+            }
+        }
         div()
             .key_context("Elsewhere")
             .on_action(cx.listener(|this, _: &Unpin, window, cx| this.unpin(window, cx)))
@@ -483,8 +505,6 @@ impl Render for Elsewhere {
                     )),
                     View::Grid => region.child(self.render_grid(&order, &now, empty, dragging, cx)),
                     View::List => {
-                        // A saved city in the zone stands in for here's row.
-                        let here_row = self.here.city.is_none();
                         region
                             .child(
                                 div()

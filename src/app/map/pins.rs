@@ -245,20 +245,25 @@ impl Elsewhere {
         let time = marker.time.clone();
         // The dot is the whole handle, as the row is in the list, and opens
         // the editor its label's time does, where there is a label to hold it.
-        dot.cursor_grab()
-            .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
-                cx.stop_propagation()
-            })
-            .when(marker.known && !unlabelled, |dot| {
-                dot.on_click(cx.listener(move |this, _event, window, cx| {
+        // No grab cursor: the bin is its only drop target, which reorders
+        // nothing, so the drag is an extra beside the list's remove button.
+        dot.on_mouse_down(MouseButton::Left, |_event, _window, cx| {
+            cx.stop_propagation()
+        })
+        .when(marker.known && !unlabelled, |dot| {
+            dot.cursor_pointer()
+                .on_click(cx.listener(move |this, _event, window, cx| {
                     this.edit(geonameid, time.clone(), window, cx)
                 }))
-            })
-            .on_drag(DragRow { geonameid, label }, Self::drag_preview(cx))
-            .when(dragging && self.drag == Some(geonameid), |dot| {
-                dot.opacity(0.4)
-            })
-            .into_any_element()
+        })
+        .on_drag(
+            DragRow::new(geonameid, label, false),
+            Self::drag_preview(cx),
+        )
+        .when(dragging && self.drag == Some(geonameid), |dot| {
+            dot.opacity(0.4)
+        })
+        .into_any_element()
     }
 
     /// The time opens the same what-if editor a row's does.

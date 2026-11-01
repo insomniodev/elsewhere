@@ -1,11 +1,16 @@
+use std::time::Duration;
+
 use gpui::{
     App, Context, Div, Entity, EntityInputHandler, Focusable, Pixels, SharedString, Window,
     deferred, div, prelude::*, px, rgb, rgba,
 };
 use jiff::Zoned;
 
+use super::button::{self, Button};
 use super::drag::{DragRow, drop_target};
 use super::here::{hint, tag};
+use super::notice::{Kind, Notice};
+use super::tooltip::Tooltip;
 use super::{Cancel, Commit, Elsewhere, Pin};
 use crate::clock;
 use crate::theme;
@@ -32,6 +37,13 @@ const WASH: Pixels = px(8.);
 /// Either side of the rule between rows.
 const GAP: Pixels = px(6.);
 
+/// Long enough to notice a removal was a mistake, short enough that the
+/// notice is not still up long after.
+const UNDO: Duration = Duration::from_secs(8);
+
+/// How long a revealed row keeps its wash.
+const REVEAL: Duration = Duration::from_millis(1500);
+
 /// Best first. Mono rather than `tnum`, which several of gpui's fallback sans
 /// faces lack, and which cannot be asked for without naming a family anyway.
 const MONO: [&str; 8] = [
@@ -55,11 +67,30 @@ pub(super) fn mono(cx: &App) -> Option<SharedString> {
 }
 
 impl Elsewhere {
+    /// Written at once, with an undo that puts the city back where it stood
+    /// in the hand order. Notices are single, so a second removal replaces
+    /// the first's notice, and only the latest can be undone.
     pub(super) fn delete(&mut self, geonameid: u32, window: &mut Window, cx: &mut Context<Self>) {
-        self.saved.retain(|id| *id != geonameid);
+        let Some(at) = self.saved.iter().position(|id| *id == geonameid) else {
+            return;
+        };
+        self.saved.remove(at);
         if let Some(pin) = &mut self.pinned {
             pin.forget(geonameid);
         }
+        let name = self
+            .index
+            .city(geonameid)
+            .map_or_else(String::new, |city| city.name.clone());
+        // Before the write, so a failure to write replaces it.
+        self.show_notice(
+            Notice::new(Kind::Info, format!("removed {name}"))
+                .action("undo", move |this, _window, cx| {
+                    this.restore(geonameid, at, cx)
+                })
+                .timeout(UNDO),
+            cx,
+        );
         self.persist(cx);
         if self
             .editing
@@ -68,6 +99,33 @@ impl Elsewhere {
         {
             self.close_editor(window, cx);
         }
+        cx.notify();
+    }
+
+    /// Unless the city came back some other way meanwhile.
+    fn restore(&mut self, geonameid: u32, at: usize, cx: &mut Context<Self>) {
+        if self.saved.contains(&geonameid) {
+            return;
+        }
+        self.saved.insert(at.min(self.saved.len()), geonameid);
+        self.persist(cx);
+        self.reveal_row(geonameid, cx);
+    }
+
+    /// Scrolls the list to the row on its next frame and washes it briefly,
+    /// so a row that comes back, or is picked, is found where it landed.
+    pub(super) fn reveal_row(&mut self, geonameid: u32, cx: &mut Context<Self>) {
+        self.revealed = Some(geonameid);
+        self.reveal_pending = true;
+        // Replacing the task cancels an earlier reveal's fade.
+        self.reveal_timer = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(REVEAL).await;
+            this.update(cx, |this, cx| {
+                this.revealed = None;
+                cx.notify();
+            })
+            .ok();
+        }));
         cx.notify();
     }
 
@@ -230,7 +288,9 @@ impl Elsewhere {
                             |cell, text| cell.text_color(rgb(text)),
                         )
                         .child(time),
-                ),
+                )
+                // The remove button's room, so the times line up.
+                .child(div().flex_none().w(button::WIDTH)),
         )
     }
 
@@ -279,7 +339,8 @@ impl Elsewhere {
             None => (clock::UNKNOWN.to_string(), None),
         };
         // The rule above a row doubles as the insertion line, live only in the
-        // hand-arranged order; westward rows can still be dragged to the bin.
+        // hand-arranged order; westward rows can still be dragged to the bin,
+        // but show no grab cursor, as a drop between rows moves nothing.
         // The first row wears it transparent, so a drop before it has a line
         // to show. No inset at the list's ends, with nothing to space from.
         let target = drop_target(div(), !self.westward)
@@ -300,16 +361,17 @@ impl Elsewhere {
                     .flex_row()
                     .gap_2()
                     .items_center()
+                    .group("row")
                     .pl(WASH)
                     .rounded_md()
                     .hover(|style| style.bg(rgba(theme::WASH)))
+                    .when(self.revealed == Some(geonameid), |row| {
+                        row.bg(rgba(theme::WASH))
+                    })
                     // The whole row is the handle; there is no grip.
-                    .cursor_grab()
+                    .when(!self.westward, |row| row.cursor_grab())
                     .on_drag(
-                        DragRow {
-                            geonameid,
-                            label: label.clone(),
-                        },
+                        DragRow::new(geonameid, label.clone(), !self.westward),
                         Self::drag_preview(cx),
                     )
                     .when(dragging && self.drag == Some(geonameid), |row| {
@@ -360,8 +422,27 @@ impl Elsewhere {
                                     .child(time.clone()),
                             )
                             .into_any_element(),
-                    }),
+                    })
+                    .child(self.render_remove(geonameid, cx)),
             ),
         )
+    }
+
+    /// Shown only while the row is hovered, but always laid out, so the
+    /// times hold still. Invisible rather than absent, it is only ever
+    /// clicked with the row under the pointer, which shows it.
+    fn render_remove(&self, geonameid: u32, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        Button::new("remove", "icons/x.svg", px(12.))
+            .key(geonameid as usize)
+            .rest(theme::SUBTEXT0)
+            .hover(theme::RED)
+            .tooltip(Tooltip::text("remove"))
+            .on_click(
+                cx.listener(move |this, _event, window, cx| this.delete(geonameid, window, cx)),
+            )
+            .build()
+            .flex_none()
+            .opacity(0.)
+            .group_hover("row", |style| style.opacity(1.))
     }
 }
