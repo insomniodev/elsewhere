@@ -176,7 +176,6 @@ impl Render for SearchPicker {
                                 this.dismiss(cx)
                             },
                         ))
-                        .child(scrollbar(&self.scroll, Axis::Vertical, px(2.)))
                         .child(
                             div()
                                 .id("results")
@@ -218,7 +217,14 @@ impl Render for SearchPicker {
                                         )
                                     },
                                 )),
-                        ),
+                        )
+                        // After the rows, so a press on the bar is its own.
+                        .child(scrollbar(
+                            "search-bar",
+                            &self.scroll,
+                            Axis::Vertical,
+                            px(2.),
+                        )),
                 )
             }))
     }

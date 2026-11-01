@@ -144,9 +144,19 @@ impl Elsewhere {
                     .bottom_0()
                     .left_0()
                     .right_0()
-                    .child(scrollbar(&self.grid_hours, Axis::Vertical, px(-6.))),
+                    .child(scrollbar(
+                        "hours-bar",
+                        &self.grid_hours,
+                        Axis::Vertical,
+                        px(-6.),
+                    )),
             )
-            .child(scrollbar(&self.grid_scroll, Axis::Horizontal, px(-6.)))
+            .child(scrollbar(
+                "columns-bar",
+                &self.grid_scroll,
+                Axis::Horizontal,
+                px(-6.),
+            ))
             .child(self.render_date(now))
             // Beside here's column, not over its hours.
             .when(empty, |grid| {

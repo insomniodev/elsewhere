@@ -493,7 +493,12 @@ impl Render for Elsewhere {
                                     ),
                             )
                             // Hung out in the window padding, clear of the times.
-                            .child(scrollbar(&self.saved_scroll, Axis::Vertical, px(-6.)))
+                            .child(scrollbar(
+                                "saved-bar",
+                                &self.saved_scroll,
+                                Axis::Vertical,
+                                px(-6.),
+                            ))
                     }
                 }
             }))

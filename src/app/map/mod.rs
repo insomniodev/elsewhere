@@ -99,6 +99,7 @@ impl Elsewhere {
             )
             .when(layout.is_some_and(|layout| layout.overflows()), |map| {
                 map.child(scrollbar(
+                    "map-bar",
                     &self.map_scroll,
                     Axis::Horizontal,
                     -SCROLLBAR_GAP,
