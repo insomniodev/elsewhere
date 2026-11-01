@@ -50,6 +50,11 @@ impl SearchPicker {
         let input = cx.new(|cx| TextInput::new("search for a city...", cx));
         window.focus(&input.focus_handle(cx));
         cx.observe(&input, Self::search).detach();
+        // Tabbing away would leave the panel over the rows it moved to.
+        cx.on_blur(&input.focus_handle(cx), window, |this, _window, cx| {
+            this.dismiss(cx)
+        })
+        .detach();
 
         Self {
             input,

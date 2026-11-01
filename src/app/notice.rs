@@ -49,6 +49,10 @@ impl Notice {
         self
     }
 
+    pub(super) fn has_action(&self) -> bool {
+        self.action.is_some()
+    }
+
     /// For news that needs no answer; failures should stay until read.
     pub(super) fn timeout(mut self, after: Duration) -> Self {
         self.timeout = Some(after);
@@ -89,6 +93,7 @@ impl Elsewhere {
         let action = notice.action.as_ref().map(|(label, run)| {
             let run = run.clone();
             Button::label("notice-action", label.clone())
+                .focus(self.focus.notice_action.clone())
                 .rest(theme::TEXT)
                 .wash(rgb(theme::SURFACE1))
                 .on_click(cx.listener(move |this, _event, window, cx| {
@@ -130,6 +135,7 @@ impl Elsewhere {
                 .children(action)
                 .child(
                     Button::new("notice-dismiss", "icons/x.svg", px(12.))
+                        .focus(self.focus.notice_dismiss.clone())
                         .rest(theme::SUBTEXT0)
                         .hover(theme::TEXT)
                         .wash(rgb(theme::SURFACE1))

@@ -10,6 +10,7 @@ use jiff::{RoundMode, Span, Unit, Zoned, ZonedRound};
 
 mod button;
 mod drag;
+mod focus;
 mod footer;
 mod grid;
 mod here;
@@ -33,6 +34,7 @@ use crate::settings::{self, Settings};
 use crate::theme;
 use crate::vendor::text_input::TextInput;
 use crate::zones;
+use focus::Focus;
 use notice::{Kind, Notice};
 use scrollbar::scrollbar;
 use search::{SearchEvent, SearchPicker};
@@ -41,9 +43,20 @@ use search::{SearchEvent, SearchPicker};
 // "PinEditor" wrapper.
 actions!(pin_editor, [Commit, Cancel]);
 
+// On a focused row, or its dot.
+actions!(row, [Edit, Remove, MoveUp, MoveDown]);
+
+// On the focused grid, whose arrows move a cell cursor.
+actions!(grid, [CellLeft, CellRight, CellUp, CellDown, PinCell]);
+
 // Window-wide. The search picker lets escape through only when it has
 // nothing of its own to clear.
-actions!(elsewhere, [Unpin, Later, Earlier]);
+actions!(
+    elsewhere,
+    [
+        Unpin, Later, Earlier, FocusNext, FocusPrev, ShowList, ShowMap, ShowGrid, Close
+    ]
+);
 
 /// One ctrl+wheel notch over the map, or one press of Later or Earlier.
 const STEP_MINUTES: i64 = 15;
@@ -177,6 +190,10 @@ pub struct Elsewhere {
     /// Whether a plain wheel over the map has said how to scrub, which it
     /// does once a session.
     scrub_hinted: bool,
+    /// The grid's keyboard cursor as (column, hour). `None` starts it on
+    /// the first column at the shown hour.
+    grid_cursor: Option<(usize, usize)>,
+    focus: Focus,
     /// The system's mono face for the times, if it has one.
     mono: Option<SharedString>,
     /// Dropping it stops the clock.
@@ -262,6 +279,8 @@ impl Elsewhere {
             grid_at_now: Rc::new(Cell::new(false)),
             scrub_carry: 0.,
             scrub_hinted: false,
+            grid_cursor: None,
+            focus: Focus::new(cx),
             mono: row::mono(cx),
             _tick: tick(cx),
         }
@@ -374,6 +393,40 @@ impl Elsewhere {
         }
     }
 
+    /// The saved cities in the order every view but the map shows them.
+    /// Derived so the stored order stays the hand-arranged one.
+    fn order(&self) -> Vec<u32> {
+        if self.westward {
+            saved::westward(
+                self.saved
+                    .iter()
+                    .filter_map(|geonameid| {
+                        let city = self.index.city(*geonameid)?;
+                        Some((*geonameid, city.longitude))
+                    })
+                    .collect(),
+            )
+        } else {
+            self.saved.clone()
+        }
+    }
+
+    /// The instant every view reads: a pin simply stands in for the clock.
+    fn shown(&self) -> Zoned {
+        self.pinned
+            .as_ref()
+            .map_or_else(Zoned::now, |pin| pin.at.clone())
+    }
+
+    /// The one window is the whole app, so closing it quits, as the title
+    /// bar's close does. The window's bounds may not have settled into the
+    /// settings yet.
+    fn close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.persist_settings(window, cx);
+        window.remove_window();
+        cx.quit();
+    }
+
     /// An open editor would keep showing the typed time, so it closes first.
     fn step(&mut self, steps: i64, window: &mut Window, cx: &mut Context<Self>) {
         self.close_editor(window, cx);
@@ -433,27 +486,10 @@ impl Render for Elsewhere {
             self.drag = None;
         }
 
-        // One reading for the whole pass, so the rows agree. A pin simply
-        // stands in for the clock.
-        let now = self
-            .pinned
-            .as_ref()
-            .map_or_else(Zoned::now, |pin| pin.at.clone());
+        // One reading for the whole pass, so the rows agree.
+        let now = self.shown();
         self.refresh_here(&now);
-        // Derived here so the stored order stays the hand-arranged one.
-        let order: Vec<u32> = if self.westward {
-            saved::westward(
-                self.saved
-                    .iter()
-                    .filter_map(|geonameid| {
-                        let city = self.index.city(*geonameid)?;
-                        Some((*geonameid, city.longitude))
-                    })
-                    .collect(),
-            )
-        } else {
-            self.saved.clone()
-        };
+        let order = self.order();
         // A search in progress floats its results over the list, so the hint
         // waits until the input is clear again.
         let empty = order.is_empty() && !self.picker.read(cx).searching();
@@ -472,11 +508,28 @@ impl Render for Elsewhere {
                 self.saved_scroll.scroll_to_item(i + usize::from(here_row));
             }
         }
+        self.tab_stops(&order, here_row, window, cx);
         div()
             .key_context("Elsewhere")
             .on_action(cx.listener(|this, _: &Unpin, window, cx| this.unpin(window, cx)))
             .on_action(cx.listener(|this, _: &Later, window, cx| this.step(1, window, cx)))
             .on_action(cx.listener(|this, _: &Earlier, window, cx| this.step(-1, window, cx)))
+            .on_action(
+                cx.listener(|this, _: &FocusNext, window, cx| this.focus_step(true, window, cx)),
+            )
+            .on_action(
+                cx.listener(|this, _: &FocusPrev, window, cx| this.focus_step(false, window, cx)),
+            )
+            .on_action(
+                cx.listener(|this, _: &ShowList, window, cx| this.switch(View::List, window, cx)),
+            )
+            .on_action(
+                cx.listener(|this, _: &ShowMap, window, cx| this.switch(View::Map, window, cx)),
+            )
+            .on_action(
+                cx.listener(|this, _: &ShowGrid, window, cx| this.switch(View::Grid, window, cx)),
+            )
+            .on_action(cx.listener(|this, _: &Close, window, cx| this.close(window, cx)))
             .relative()
             .size_full()
             .flex()
@@ -490,7 +543,7 @@ impl Render for Elsewhere {
             .text_color(rgb(theme::TEXT))
             .child(self.render_titlebar(window, cx))
             .child(self.picker.clone())
-            .children(self.render_banner(&now, cx))
+            .children(self.render_banner(&now, window, cx))
             // Scrolls on its own so the input and toolbar stay put. `min_h_0`
             // lets this flex child shrink below its content and overflow.
             .child(div().relative().flex_1().min_h_0().map(|region| {

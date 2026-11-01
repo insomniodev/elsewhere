@@ -8,6 +8,16 @@ Check the time in other places.
 | `↑` `↓` / `Enter` | Move through / pick a search result |
 | `Esc` | Clear the search, cancel an edit, or return to now |
 | `Alt+↑` / `Alt+↓` | Step the shown time 15 minutes earlier / later |
+| `Tab` / `Shift+Tab` | Move to the next / previous control |
+| `Enter` / `Space` | Press the focused button |
+| `Enter` | Edit the focused city's time |
+| `Delete` | Remove the focused city |
+| `Ctrl+↑` / `Ctrl+↓` | Move the focused city up / down the list |
+| `←` `→` `↑` `↓` / `Enter` | Move through / pick an hour in the grid |
+| `Ctrl+1` / `2` / `3` | Show the list / map / grid |
+| `Ctrl+W` / `Ctrl+Q` | Close the window / quit |
+
+On macOS, `Cmd` stands in for `Ctrl` in the last two rows.
 
 Click a time to type a what-if time; scroll over the map to scrub, or click an
 hour in the grid.

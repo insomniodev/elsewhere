@@ -8,10 +8,11 @@ use jiff::Zoned;
 
 use super::button::{self, Button};
 use super::drag::{DragRow, drop_target};
+use super::focus::{keyboard_only, ring};
 use super::here::{hint, tag};
 use super::notice::{Kind, Notice};
 use super::tooltip::Tooltip;
-use super::{Cancel, Commit, Elsewhere, Pin};
+use super::{Cancel, Commit, Edit, Elsewhere, MoveDown, MoveUp, Pin, Remove};
 use crate::clock;
 use crate::theme;
 use crate::vendor::text_input::TextInput;
@@ -85,8 +86,8 @@ impl Elsewhere {
         // Before the write, so a failure to write replaces it.
         self.show_notice(
             Notice::new(Kind::Info, format!("removed {name}"))
-                .action("undo", move |this, _window, cx| {
-                    this.restore(geonameid, at, cx)
+                .action("undo", move |this, window, cx| {
+                    this.restore(geonameid, at, window, cx)
                 })
                 .timeout(UNDO),
             cx,
@@ -102,14 +103,45 @@ impl Elsewhere {
         cx.notify();
     }
 
-    /// Unless the city came back some other way meanwhile.
-    fn restore(&mut self, geonameid: u32, at: usize, cx: &mut Context<Self>) {
+    /// Unless the city came back some other way meanwhile. An undo from the
+    /// keyboard takes focus to the row it brought back; a click leaves focus
+    /// where it was, as clicks do.
+    fn restore(&mut self, geonameid: u32, at: usize, window: &mut Window, cx: &mut Context<Self>) {
         if self.saved.contains(&geonameid) {
             return;
         }
         self.saved.insert(at.min(self.saved.len()), geonameid);
         self.persist(cx);
         self.reveal_row(geonameid, cx);
+        if self.focus.notice_action.is_focused(window)
+            && let Some(row) = self.focus.row(geonameid)
+        {
+            window.focus(&row.clone());
+        }
+    }
+
+    /// Ctrl+↑/↓ on a focused row: the keyboard's drag, so in the hand order
+    /// only.
+    fn shift(&mut self, geonameid: u32, up: bool, cx: &mut Context<Self>) {
+        if self.westward {
+            return;
+        }
+        let Some(at) = self.saved.iter().position(|id| *id == geonameid) else {
+            return;
+        };
+        let to = if up {
+            at.checked_sub(1)
+        } else {
+            Some(at + 1).filter(|to| *to < self.saved.len())
+        };
+        let Some(to) = to else {
+            return;
+        };
+        self.saved.swap(at, to);
+        self.persist(cx);
+        self.saved_scroll
+            .scroll_to_item(to + usize::from(self.here.city.is_none()));
+        cx.notify();
     }
 
     /// Scrolls the list to the row on its next frame and washes it briefly,
@@ -149,11 +181,13 @@ impl Elsewhere {
             input.unmark_text(window, cx);
             input
         });
-        window.focus(&input.focus_handle(cx));
-        // Not over one already open, which is still the editor's own pin.
+        // Not over one already open, which is still the editor's own pin
+        // and focus.
         if self.editing.is_none() {
             self.snapshot_pin();
+            self.focus.before_edit = window.focused(cx);
         }
+        window.focus(&input.focus_handle(cx));
         cx.observe(&input, Self::retime).detach();
         self.editing = Some((geonameid, input));
         cx.notify();
@@ -205,10 +239,32 @@ impl Elsewhere {
         self.close_editor(window, cx);
     }
 
+    /// Tab out of the editor: a whole time stays pinned, anything else goes
+    /// back to what was shown before.
+    pub(super) fn settle_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let whole = self
+            .editing
+            .as_ref()
+            .is_some_and(|(_, input)| clock::wall(input.read(cx).text()).is_some());
+        if !whole {
+            self.restore_pin();
+        }
+        self.close_editor(window, cx);
+    }
+
+    /// Focus goes back where it was, so an edit opened from a row returns to
+    /// it and one opened by a click returns to the search. With no editor
+    /// open, focus stays put.
     pub(super) fn close_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.editing = None;
         self.pre_edit = None;
-        window.focus(&self.picker.focus_handle(cx));
+        if self.editing.take().is_some() {
+            let back = self
+                .focus
+                .before_edit
+                .take()
+                .unwrap_or_else(|| self.picker.focus_handle(cx));
+            window.focus(&back);
+        }
         cx.notify();
     }
 
@@ -343,6 +399,8 @@ impl Elsewhere {
         cx: &mut Context<Self>,
     ) -> Option<impl IntoElement + use<>> {
         let city = self.index.city(geonameid)?;
+        let focus = self.focus.row(geonameid)?.clone();
+        let focused = self.focus.on(&focus);
         let label = self.index.label(city);
         let zone = self.zones.get(&city.timezone);
         let detail = clock::city_detail(&label, zone, now);
@@ -370,8 +428,26 @@ impl Elsewhere {
             });
         Some(
             target.child(
-                div()
-                    .id(("row", geonameid as usize))
+                keyboard_only(div().id(("row", geonameid as usize)).track_focus(&focus))
+                    .key_context("Row")
+                    .when(known, |row| {
+                        row.on_action(cx.listener({
+                            let time = time.clone();
+                            move |this, _: &Edit, window, cx| {
+                                this.edit(geonameid, time.clone(), window, cx)
+                            }
+                        }))
+                    })
+                    .on_action(cx.listener(move |this, _: &Remove, window, cx| {
+                        this.delete(geonameid, window, cx)
+                    }))
+                    .on_action(cx.listener(move |this, _: &MoveUp, _window, cx| {
+                        this.shift(geonameid, true, cx)
+                    }))
+                    .on_action(cx.listener(move |this, _: &MoveDown, _window, cx| {
+                        this.shift(geonameid, false, cx)
+                    }))
+                    .relative()
                     .flex()
                     .flex_row()
                     .gap_2()
@@ -448,15 +524,22 @@ impl Elsewhere {
                             )
                             .into_any_element(),
                     })
-                    .child(self.render_remove(geonameid, cx)),
+                    .child(self.render_remove(geonameid, focused, cx))
+                    .when(focused, |row| row.child(ring())),
             ),
         )
     }
 
-    /// Shown only while the row is hovered, but always laid out, so the
-    /// times hold still. Invisible rather than absent, it is only ever
-    /// clicked with the row under the pointer, which shows it.
-    fn render_remove(&self, geonameid: u32, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    /// Shown only while the row is hovered or focused, but always laid out,
+    /// so the times hold still. Invisible rather than absent, it is only
+    /// ever clicked with the row under the pointer, which shows it. Focused,
+    /// it says what Delete does.
+    fn render_remove(
+        &self,
+        geonameid: u32,
+        focused: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
         Button::new("remove", "icons/x.svg", px(12.))
             .key(geonameid as usize)
             .rest(theme::SUBTEXT0)
@@ -467,7 +550,7 @@ impl Elsewhere {
             )
             .build()
             .flex_none()
-            .opacity(0.)
+            .opacity(if focused { 1. } else { 0. })
             .group_hover("row", |style| style.opacity(1.))
     }
 }

@@ -3,15 +3,19 @@
 
 mod header;
 
-use gpui::{Axis, Context, Div, ElementId, Pixels, canvas, div, point, prelude::*, px, rgb, rgba};
+use gpui::{
+    Axis, Context, Div, ElementId, Pixels, ScrollHandle, canvas, div, point, prelude::*, px, rgb,
+    rgba,
+};
 use jiff::Zoned;
 use jiff::civil::Date;
 use jiff::tz::TimeZone;
 
+use super::focus::{keyboard_only, ring};
 use super::here::{hint_over, tag};
 use super::scrollbar::scrollbar;
 use super::tooltip::Tooltip;
-use super::{Elsewhere, Pin};
+use super::{CellDown, CellLeft, CellRight, CellUp, Elsewhere, Pin, PinCell};
 use crate::clock;
 use crate::hours;
 use crate::theme;
@@ -48,6 +52,30 @@ struct Column {
     /// `None` when the zone is unknown: the column keeps its head and rule but
     /// no labels.
     zone: Option<TimeZone>,
+    /// The hour the keyboard cursor is on, if it is in this column and the
+    /// grid has focus.
+    cursor: Option<usize>,
+}
+
+/// Scrolls the least that brings `start..start + len` along `axis` into view.
+fn reveal(handle: &ScrollHandle, axis: Axis, start: Pixels, len: Pixels) {
+    let offset = handle.offset();
+    let size = handle.bounds().size;
+    let (shown, view) = match axis {
+        Axis::Vertical => (-offset.y, size.height),
+        Axis::Horizontal => (-offset.x, size.width),
+    };
+    let to = if start < shown {
+        start
+    } else if start + len > shown + view {
+        start + len - view
+    } else {
+        return;
+    };
+    handle.set_offset(match axis {
+        Axis::Vertical => point(offset.x, -to),
+        Axis::Horizontal => point(-to, offset.y),
+    });
 }
 
 /// Where the real time falls, `hours` into the day: a label's hour sits
@@ -73,27 +101,24 @@ impl Elsewhere {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let day = hours::Day::of(now);
-        // A saved city in the zone is here's column already.
-        let here = self.here.city.is_none().then(|| Column {
-            geonameid: None,
-            zone: Some(self.here.zone.clone()),
-        });
         // Alone, here's column keeps its own width at the left rather than
         // stretching to set its labels against the far edge.
         let alone = order.is_empty();
-        // The list's order, so the westward toggle reorders the columns too.
-        let columns: Vec<Column> = here
-            .into_iter()
-            .chain(order.iter().filter_map(|geonameid| {
-                let city = self.index.city(*geonameid)?;
-                Some(Column {
-                    geonameid: Some(*geonameid),
-                    zone: self.zones.get(&city.timezone).cloned(),
-                })
-            }))
-            .collect();
+        let mut columns = self.grid_columns(order);
+        if self.focus.on(&self.focus.grid) {
+            let (column, hour) = self.cell(columns.len(), &day, now);
+            if let Some(column) = columns.get_mut(column) {
+                column.cursor = Some(hour);
+            }
+        }
 
-        div()
+        keyboard_only(div().track_focus(&self.focus.grid))
+            .key_context("Grid")
+            .on_action(cx.listener(|this, _: &CellLeft, _window, cx| this.move_cell(-1, 0, cx)))
+            .on_action(cx.listener(|this, _: &CellRight, _window, cx| this.move_cell(1, 0, cx)))
+            .on_action(cx.listener(|this, _: &CellUp, _window, cx| this.move_cell(0, -1, cx)))
+            .on_action(cx.listener(|this, _: &CellDown, _window, cx| this.move_cell(0, 1, cx)))
+            .on_action(cx.listener(|this, _: &PinCell, _window, cx| this.pin_cell(cx)))
             .relative()
             .size_full()
             .child(self.render_scroll_to_now(&day, now))
@@ -164,6 +189,80 @@ impl Elsewhere {
                     div().top(header::HEAD).bottom_0().left(COLUMN).right_0(),
                 ))
             })
+    }
+
+    /// Here's column first, while no saved city is in the zone to be it,
+    /// then the list's order, so the westward toggle reorders them too.
+    fn grid_columns(&self, order: &[u32]) -> Vec<Column> {
+        let here = self.here.city.is_none().then(|| Column {
+            geonameid: None,
+            zone: Some(self.here.zone.clone()),
+            cursor: None,
+        });
+        here.into_iter()
+            .chain(order.iter().filter_map(|geonameid| {
+                let city = self.index.city(*geonameid)?;
+                Some(Column {
+                    geonameid: Some(*geonameid),
+                    zone: self.zones.get(&city.timezone).cloned(),
+                    cursor: None,
+                })
+            }))
+            .collect()
+    }
+
+    /// The keyboard cursor as (column, hour), kept inside a grid that may
+    /// have lost columns or hours since it moved. It starts on the first
+    /// column at the shown hour.
+    fn cell(&self, columns: usize, day: &hours::Day, now: &Zoned) -> (usize, usize) {
+        let (column, hour) = self.grid_cursor.unwrap_or((0, day.index(now).unwrap_or(0)));
+        (
+            column.min(columns.saturating_sub(1)),
+            hour.min(day.rows().saturating_sub(1)),
+        )
+    }
+
+    /// Arrows on the focused grid, scrolling the cell into view.
+    fn move_cell(&mut self, across: isize, down: isize, cx: &mut Context<Self>) {
+        let now = self.shown();
+        let day = hours::Day::of(&now);
+        let columns = self.grid_columns(&self.order()).len();
+        let (column, hour) = self.cell(columns, &day, &now);
+        let step = |at: usize, by: isize, len: usize| {
+            at.saturating_add_signed(by).min(len.saturating_sub(1))
+        };
+        let (column, hour) = (step(column, across, columns), step(hour, down, day.rows()));
+        self.grid_cursor = Some((column, hour));
+        reveal(&self.grid_hours, Axis::Vertical, ROW * hour as f32, ROW);
+        reveal(
+            &self.grid_scroll,
+            Axis::Horizontal,
+            COLUMN * column as f32,
+            COLUMN,
+        );
+        cx.notify();
+    }
+
+    /// Enter on the focused grid pins the cell's time, as a click does.
+    fn pin_cell(&mut self, cx: &mut Context<Self>) {
+        let now = self.shown();
+        let day = hours::Day::of(&now);
+        let columns = self.grid_columns(&self.order());
+        let (column, hour) = self.cell(columns.len(), &day, &now);
+        let Some(column) = columns.get(column).filter(|column| column.zone.is_some()) else {
+            return;
+        };
+        // The shown hour pins the actual minute, as its label shows.
+        let at = if day.index(&now) == Some(hour) {
+            now
+        } else {
+            day.row(hour)
+        };
+        self.pinned = Some(Pin {
+            anchor: column.geonameid,
+            at,
+        });
+        cx.notify();
     }
 
     /// The day the hours lay out, in here's zone, over the first column's
@@ -288,7 +387,8 @@ impl Elsewhere {
             .gap(TAG_GAP)
             .pr(INSET)
             .text_size(LABEL)
-            .text_color(rgb(theme::OVERLAY2));
+            .text_color(rgb(theme::OVERLAY2))
+            .when(column.cursor == Some(i), |slot| slot.child(ring()));
         let Some(zone) = &column.zone else {
             return slot;
         };

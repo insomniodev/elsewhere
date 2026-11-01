@@ -68,7 +68,34 @@ fn main() {
                 KeyBinding::new("escape", app::Unpin, Some("Elsewhere")),
                 KeyBinding::new("alt-down", app::Later, Some("Elsewhere")),
                 KeyBinding::new("alt-up", app::Earlier, Some("Elsewhere")),
+                KeyBinding::new("tab", app::FocusNext, Some("Elsewhere")),
+                KeyBinding::new("shift-tab", app::FocusPrev, Some("Elsewhere")),
+                // "secondary" is cmd on macOS and ctrl elsewhere.
+                KeyBinding::new("secondary-1", app::ShowList, Some("Elsewhere")),
+                KeyBinding::new("secondary-2", app::ShowMap, Some("Elsewhere")),
+                KeyBinding::new("secondary-3", app::ShowGrid, Some("Elsewhere")),
+                KeyBinding::new("secondary-q", app::Close, Some("Elsewhere")),
+                KeyBinding::new("secondary-w", app::Close, Some("Elsewhere")),
+                KeyBinding::new("enter", app::Edit, Some("Row")),
+                KeyBinding::new("delete", app::Remove, Some("Row")),
+                KeyBinding::new("backspace", app::Remove, Some("Row")),
+                // Not alt, which steps the time from anywhere, a row included.
+                KeyBinding::new("ctrl-up", app::MoveUp, Some("Row")),
+                KeyBinding::new("ctrl-down", app::MoveDown, Some("Row")),
+                KeyBinding::new("left", app::CellLeft, Some("Grid")),
+                KeyBinding::new("right", app::CellRight, Some("Grid")),
+                KeyBinding::new("up", app::CellUp, Some("Grid")),
+                KeyBinding::new("down", app::CellDown, Some("Grid")),
+                KeyBinding::new("enter", app::PinCell, Some("Grid")),
             ]);
+            // Whatever closes the one window, the compositor included, ends
+            // the app with it.
+            cx.on_window_closed(|cx| {
+                if cx.windows().is_empty() {
+                    cx.quit();
+                }
+            })
+            .detach();
 
             // Read before the window opens, so it opens where it was left.
             let settings = settings::load();

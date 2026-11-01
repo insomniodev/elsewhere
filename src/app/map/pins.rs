@@ -8,10 +8,11 @@ use gpui::{
 use jiff::Zoned;
 
 use super::labels;
-use crate::app::Elsewhere;
 use crate::app::drag::DragRow;
+use crate::app::focus::keyboard_only;
 use crate::app::here::tag;
 use crate::app::tooltip::Tooltip;
+use crate::app::{Elsewhere, Remove};
 use crate::clock;
 use crate::geo::{self, LonLat};
 use crate::theme;
@@ -244,27 +245,43 @@ impl Elsewhere {
             .map(|city| self.index.label(city))
             .unwrap_or_default();
         let time = marker.time.clone();
+        let Some(focus) = self.focus.row(geonameid).cloned() else {
+            return dot.into_any_element();
+        };
+        let focused = self.focus.on(&focus);
         // The dot is the whole handle, as the row is in the list, and opens
         // the editor its label's time does, where there is a label to hold it.
         // No grab cursor: the bin is its only drop target, which reorders
         // nothing, so the drag is an extra beside the list's remove button.
-        dot.on_mouse_down(MouseButton::Left, |_event, _window, cx| {
-            cx.stop_propagation()
-        })
-        .when(marker.known && !unlabelled, |dot| {
-            dot.cursor_pointer()
-                .on_click(cx.listener(move |this, _event, window, cx| {
-                    this.edit(geonameid, time.clone(), window, cx)
-                }))
-        })
-        .on_drag(
-            DragRow::new(geonameid, label, false),
-            Self::drag_preview(cx),
-        )
-        .when(dragging && self.drag == Some(geonameid), |dot| {
-            dot.opacity(0.4)
-        })
-        .into_any_element()
+        // A stop in the tab order with its row's keys, but for moving: the
+        // map has no order to move it in. Ringed rather than lit, so focus
+        // and a hover read apart.
+        keyboard_only(dot.track_focus(&focus))
+            .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
+                cx.stop_propagation()
+            })
+            .key_context("Row")
+            .when(focused, |dot| {
+                dot.rounded_full().border_1().border_color(rgb(theme::BLUE))
+            })
+            .on_action(
+                cx.listener(move |this, _: &Remove, window, cx| this.delete(geonameid, window, cx)),
+            )
+            // Focused, Enter clicks it, so it needs no Edit of its own.
+            .when(marker.known && !unlabelled, |dot| {
+                dot.cursor_pointer()
+                    .on_click(cx.listener(move |this, _event, window, cx| {
+                        this.edit(geonameid, time.clone(), window, cx)
+                    }))
+            })
+            .on_drag(
+                DragRow::new(geonameid, label, false),
+                Self::drag_preview(cx),
+            )
+            .when(dragging && self.drag == Some(geonameid), |dot| {
+                dot.opacity(0.4)
+            })
+            .into_any_element()
     }
 
     /// The time opens the same what-if editor a row's does.

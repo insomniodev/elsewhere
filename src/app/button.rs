@@ -6,6 +6,7 @@ use gpui::{
     Stateful, Svg, Window, WindowControlArea, div, prelude::*, px, rgb, svg, transparent_black,
 };
 
+use super::focus::keyboard_only;
 use crate::theme;
 
 /// At least WCAG 2.5.8's 24 x 24; wider so the icons keep their rhythm.
@@ -174,9 +175,7 @@ impl Button {
         self
     }
 
-    /// Not a tab stop yet: it takes focus only when given a handle and
-    /// something focuses it.
-    #[expect(dead_code, reason = "keyboard navigation wires it up")]
+    /// A stop in the window's tab order; Enter and space click it.
     pub(super) fn focus(mut self, handle: FocusHandle) -> Self {
         self.focus = Some(handle);
         self
@@ -248,9 +247,11 @@ impl Button {
             })
             .when(disabled, |button| button.opacity(DISABLED_OPACITY));
         if let Some(handle) = focus {
-            button = button
-                .track_focus(&handle)
-                .focus(|style| style.border_color(rgb(theme::BLUE)));
+            button = keyboard_only(
+                button
+                    .track_focus(&handle)
+                    .focus(|style| style.border_color(rgb(theme::BLUE))),
+            );
         }
         if let Some(area) = area.filter(|_| live) {
             button = button.window_control_area(area);

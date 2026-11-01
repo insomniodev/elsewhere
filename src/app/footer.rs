@@ -1,9 +1,13 @@
-use gpui::{Context, Pixels, Window, div, prelude::*, px, rgb, rgba};
+use gpui::{
+    Context, FocusHandle, Pixels, SharedString, Window, div, prelude::*, px, rgb, rgba,
+    transparent_black,
+};
 use jiff::Zoned;
 use jiff::tz::TimeZone;
 
 use super::button::Button;
 use super::drag::DragRow;
+use super::focus::{Focus, keyboard_only};
 use super::tooltip::Tooltip;
 use super::{Elsewhere, View};
 use crate::clock::{self, Format};
@@ -13,6 +17,21 @@ use crate::theme;
 /// the banner comes and goes.
 pub(super) const BANNER_HEIGHT: Pixels = px(24.);
 pub(super) const FOOTER_HEIGHT: Pixels = px(24.);
+
+/// Beside the way back, which esc also takes: how else to move the time.
+/// Spelled out where there is room; cut a word short, it would read worse
+/// than the bare keys.
+const KEYS: [&str; 2] = ["alt ↑↓ · esc", "alt ↑↓ steps 15 min · esc"];
+
+/// The window width from which `KEYS` spells the step out.
+const KEYS_SPELLED: Pixels = px(460.);
+
+/// What the window's shortcuts are held with, as the tooltips name it.
+const MODIFIER: &str = if cfg!(target_os = "macos") {
+    "cmd"
+} else {
+    "ctrl"
+};
 
 struct Toggle {
     id: &'static str,
@@ -28,6 +47,7 @@ struct Toggle {
     /// Why it does nothing now, when it doesn't apply. It stays in its slot
     /// either way, so the controls never jump between views.
     unavailable: fn(&Elsewhere) -> Option<&'static str>,
+    focus: fn(&Focus) -> &FocusHandle,
 }
 
 const FORMAT: Toggle = Toggle {
@@ -43,6 +63,7 @@ const FORMAT: Toggle = Toggle {
         (this.saved.is_empty() && this.view == View::Map && this.here.place().is_none())
             .then_some("add a city first")
     },
+    focus: |focus| &focus.format,
 };
 
 struct Segment {
@@ -51,6 +72,8 @@ struct Segment {
     icon: &'static str,
     /// Another view shown, then this one.
     tips: [&'static str; 2],
+    /// The digit that, held with `MODIFIER`, shows it.
+    key: char,
 }
 
 const VIEWS: [Segment; 3] = [
@@ -59,18 +82,21 @@ const VIEWS: [Segment; 3] = [
         id: "show-list",
         icon: "icons/rows.svg",
         tips: ["show as a list", "showing as a list"],
+        key: '1',
     },
     Segment {
         view: View::Map,
         id: "show-map",
         icon: "icons/map.svg",
         tips: ["show on a map", "showing on a map"],
+        key: '2',
     },
     Segment {
         view: View::Grid,
         id: "show-grid",
         icon: "icons/columns.svg",
         tips: ["show as a day grid", "showing as a day grid"],
+        key: '3',
     },
 ];
 
@@ -90,6 +116,7 @@ const WESTWARD: Toggle = Toggle {
             None
         }
     },
+    focus: |focus| &focus.westward,
 };
 
 impl Elsewhere {
@@ -98,11 +125,12 @@ impl Elsewhere {
         self.close_editor(window, cx);
     }
 
-    fn switch(&mut self, to: View, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn switch(&mut self, to: View, window: &mut Window, cx: &mut Context<Self>) {
         if self.view == to {
             return;
         }
         self.view = to;
+        self.grid_cursor = None;
         // The map opens framed on the cities, wherever it was left.
         if to == View::Map {
             self.map_frame.set(None);
@@ -113,6 +141,23 @@ impl Elsewhere {
         // stranded where there is none.
         self.close_editor(window, cx);
         self.persist_settings(window, cx);
+        cx.notify();
+    }
+
+    /// The footer's stops in order, leaving out the controls that do nothing
+    /// now; the switch's current segment stays, so its neighbours keep their
+    /// places as it changes.
+    pub(super) fn footer_stops(&self) -> Vec<FocusHandle> {
+        let mut stops = self.focus.views.to_vec();
+        if self.view == View::Map {
+            stops.push(self.focus.fit.clone());
+        }
+        for toggle in [&FORMAT, &WESTWARD] {
+            if (toggle.unavailable)(self).is_none() {
+                stops.push((toggle.focus)(&self.focus).clone());
+            }
+        }
+        stops
     }
 
     fn toggle_westward(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -143,9 +188,11 @@ impl Elsewhere {
             click,
             on,
             unavailable,
+            focus,
         } = *toggle;
         let reason = unavailable(self);
         Button::new(id, icon, size)
+            .focus(focus(&self.focus).clone())
             .on(on(self))
             .disabled(reason.is_some())
             .tooltip(Tooltip::live(cx.entity(), move |this| {
@@ -163,19 +210,22 @@ impl Elsewhere {
             .flex_row()
             .rounded_md()
             .bg(rgb(theme::MANTLE))
-            .children(VIEWS.iter().map(|segment| {
+            .children(VIEWS.iter().zip(&self.focus.views).map(|(segment, focus)| {
                 let Segment {
                     view,
                     id,
                     icon,
                     tips,
+                    key,
                 } = *segment;
                 Button::new(id, icon, px(16.))
+                    .focus(focus.clone())
                     .on(self.view == view)
                     .current(self.view == view)
                     .wash(rgba(theme::WASH))
                     .tooltip(Tooltip::live(cx.entity(), move |this| {
-                        tips[(this.view == view) as usize].into()
+                        let tip = tips[(this.view == view) as usize];
+                        SharedString::from(format!("{tip} · {MODIFIER}+{key}"))
                     }))
                     .on_click(
                         cx.listener(move |this, _event, window, cx| this.switch(view, window, cx)),
@@ -187,6 +237,7 @@ impl Elsewhere {
     /// In every view, so the controls never jump, but live only on the map.
     fn render_fit(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         Button::new("fit", "icons/fit.svg", px(14.))
+            .focus(self.focus.fit.clone())
             .disabled(self.view != View::Map)
             .tooltip(Tooltip::live(cx.entity(), |this| {
                 if this.view == View::Map {
@@ -210,9 +261,11 @@ impl Elsewhere {
     pub(super) fn render_banner(
         &self,
         now: &Zoned,
+        window: &Window,
         cx: &mut Context<Self>,
     ) -> Option<impl IntoElement + use<>> {
         let pin = self.pinned.as_ref()?;
+        let keys = KEYS[usize::from(window.viewport_size().width >= KEYS_SPELLED)];
         let real = Zoned::now();
         let read = |zone: &TimeZone| {
             let time = clock::reading(now, zone, self.format).time;
@@ -282,18 +335,26 @@ impl Elsewhere {
                         .items_center()
                         .gap_1p5()
                         .child(
-                            div()
-                                .id("unpin")
-                                .px_1()
-                                .rounded_md()
-                                .cursor_pointer()
-                                .hover(|style| style.bg(rgb(theme::SURFACE0)))
-                                .on_click(
-                                    cx.listener(|this, _event, window, cx| this.unpin(window, cx)),
-                                )
-                                .child("back to now"),
+                            keyboard_only(
+                                div()
+                                    .id("unpin")
+                                    .track_focus(&self.focus.unpin)
+                                    .px_1()
+                                    .rounded_md()
+                                    // Framed always, so the focus ring
+                                    // takes no room.
+                                    .border_1()
+                                    .border_color(transparent_black())
+                                    .focus(|style| style.border_color(rgb(theme::BLUE)))
+                                    .cursor_pointer()
+                                    .hover(|style| style.bg(rgb(theme::SURFACE0))),
+                            )
+                            .on_click(
+                                cx.listener(|this, _event, window, cx| this.unpin(window, cx)),
+                            )
+                            .child("back to now"),
                         )
-                        .child(div().text_color(rgb(theme::OVERLAY2)).child("esc")),
+                        .child(div().text_color(rgb(theme::OVERLAY2)).child(keys)),
                 ),
         )
     }
