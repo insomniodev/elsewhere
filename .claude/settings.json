@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(scripts/sandbox.sh:*)",
+      "Bash(./scripts/sandbox.sh:*)"
+    ]
+  }
+}
