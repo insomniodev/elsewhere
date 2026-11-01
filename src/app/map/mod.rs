@@ -2,15 +2,22 @@
 mod labels;
 mod pins;
 
+use std::cell::Cell;
+use std::rc::Rc;
+use std::time::Duration;
+
 use gpui::{
-    Axis, Bounds, Context, Path, PathBuilder, Pixels, Point, ScrollDelta, ScrollWheelEvent, Size,
-    TextRun, Window, canvas, div, fill, point, prelude::*, px, rgb, rgba, size,
+    Axis, Bounds, Context, CursorStyle, DispatchPhase, MouseButton, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, Path, PathBuilder, Pixels, Point, ScrollDelta, ScrollHandle, ScrollWheelEvent,
+    Size, TextRun, Window, canvas, div, fill, point, prelude::*, px, rgb, rgba, size,
 };
 use jiff::Zoned;
 
-use super::Elsewhere;
+use super::footer::{BANNER_HEIGHT, FOOTER_HEIGHT};
 use super::here::hint_over;
+use super::notice::{Kind, Notice};
 use super::scrollbar::scrollbar;
+use super::{Elsewhere, GAP, PAD_BOTTOM};
 use crate::clock;
 use crate::geo::{self, LonLat};
 use crate::theme;
@@ -24,6 +31,8 @@ const ZONE_LINE_WIDTH: Pixels = px(1.);
 const OFFSET_SIZE: Pixels = px(10.);
 const OFFSET_LINE: Pixels = px(12.);
 const OFFSET_GAP: Pixels = px(2.);
+/// The least clear space between two offset labels.
+const OFFSET_ROOM: Pixels = px(3.);
 const TICK: Pixels = px(3.);
 
 /// The sun has rays so it never reads as one of the cities' plain dots.
@@ -36,8 +45,38 @@ const RAY_WIDTH: Pixels = px(1.);
 /// A notch for wheels that report pixels, as a trackpad does. Roughly what a
 /// mouse wheel's click carries.
 const NOTCH_PIXELS: f32 = 40.0;
+/// gpui reports a wheel's click as three lines, as desktops scroll text.
+const NOTCH_LINES: f32 = 3.0;
 
 const SCROLLBAR_GAP: Pixels = px(4.);
+
+/// Room beside the outermost cities when the map is fitted to them.
+const MARGIN: Pixels = px(16.);
+/// The narrowest span a fit frames, as a share of the world, so one city
+/// shows its region rather than the closest zoom.
+const MIN_SPAN: f32 = 1.0 / 3.0;
+
+/// A plain wheel over the map used to scrub, so it says once what does now.
+const SCRUB_HINT: &str = "ctrl + scroll or alt + ↑/↓ moves the time";
+const SCRUB_HINT_TIMEOUT: Duration = Duration::from_secs(4);
+
+/// How far in and where the map looks, kept between fits so that neither a
+/// resize nor the banner reframes it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct Frame {
+    /// The world's width over the viewport's; a resize keeps the ratio, so
+    /// the same cities stay in view.
+    zoom: f32,
+    /// The x to put mid-viewport, as a share of the world's width.
+    middle: f32,
+}
+
+/// A drag on the map's body: the pointer and the scroll offset at the press.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Pan {
+    from: Point<Pixels>,
+    offset: Point<Pixels>,
+}
 
 /// `rect` is relative to the scrolled content, and wider than `viewport` when
 /// the map scrolls sideways.
@@ -54,11 +93,6 @@ impl Layout {
 }
 
 impl Elsewhere {
-    /// `None` until the first frame has been laid out.
-    pub(super) fn map_rect(&self) -> Option<Bounds<Pixels>> {
-        self.map_layout.get().map(|layout| layout.rect)
-    }
-
     pub(super) fn render_map(
         &self,
         saved: &[u32],
@@ -69,6 +103,7 @@ impl Elsewhere {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let layout = self.map_layout.get();
+        let panning = self.map_pan.get().is_some();
         div()
             .relative()
             .size_full()
@@ -78,14 +113,32 @@ impl Elsewhere {
                     .size_full()
                     .overflow_x_scroll()
                     .track_scroll(&self.map_scroll)
-                    // Otherwise gpui turns a plain wheel sideways here, but
-                    // that is the time scrub; shift+wheel already scrolls.
+                    // Otherwise gpui turns a plain wheel sideways here, which
+                    // would leave the hint about scrubbing describing a pan;
+                    // shift+wheel and a sideways wheel already scroll.
                     .map(|mut scroller| {
                         scroller.style().restrict_scroll_to_axis = Some(true);
                         scroller
                     })
+                    .cursor(if panning {
+                        CursorStyle::ClosedHand
+                    } else {
+                        CursorStyle::OpenHand
+                    })
+                    // Dots, times and the scrollbar stop the press first, so
+                    // only the body pans.
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, event: &MouseDownEvent, _window, cx| {
+                            this.map_pan.set(Some(Pan {
+                                from: event.position,
+                                offset: this.map_scroll.offset(),
+                            }));
+                            cx.notify();
+                        }),
+                    )
                     .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, _window, cx| {
-                        this.scrub(event, cx)
+                        this.wheel(event, cx)
                     }))
                     .child(
                         div()
@@ -97,33 +150,79 @@ impl Elsewhere {
                             .children(self.render_pins(saved, now, dragging, window, cx)),
                     ),
             )
-            .when(layout.is_some_and(|layout| layout.overflows()), |map| {
-                map.child(scrollbar(
-                    "map-bar",
-                    &self.map_scroll,
-                    Axis::Horizontal,
-                    -SCROLLBAR_GAP,
-                ))
+            .child(pan(self.map_pan.clone(), self.map_scroll.clone()))
+            // Just under the map rather than the region, which the letterbox
+            // may leave far below it.
+            .when_some(layout.filter(Layout::overflows), |map, layout| {
+                map.child(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .right_0()
+                        .top(layout.rect.origin.y)
+                        .h(layout.rect.size.height)
+                        .child(scrollbar(
+                            "map-bar",
+                            &self.map_scroll,
+                            Axis::Horizontal,
+                            -SCROLLBAR_GAP,
+                        )),
+                )
             })
             .when(empty, |map| map.child(hint_over(div().inset_0())))
     }
 
-    /// Where the map centres when it first overflows: here's marker, else the
-    /// first saved city, else Greenwich.
-    fn focus(&self) -> f64 {
+    /// What a fit frames, as shares of the world's width: the saved cities and
+    /// here's marker. Nothing with no city saved, which frames the world.
+    fn framed(&self) -> Vec<f32> {
+        if self.saved.is_empty() {
+            return Vec::new();
+        }
         self.here
             .place()
             .into_iter()
             .chain(self.saved.iter().copied())
-            .find_map(|geonameid| self.index.city(geonameid))
-            .map_or(0.0, |city| city.longitude)
+            .filter_map(|geonameid| self.index.city(geonameid))
+            .map(|city| {
+                geo::project(LonLat {
+                    lon: city.longitude,
+                    lat: 0.0,
+                })
+                .0 as f32
+            })
+            .collect()
+    }
+
+    /// Ctrl scrubs. A plain wheel is too easy to turn by accident, reaching
+    /// for a pan, so it only says, once, how to scrub; the scroller takes
+    /// shift and sideways wheels as pans.
+    fn wheel(&mut self, event: &ScrollWheelEvent, cx: &mut Context<Self>) {
+        if event.modifiers.control {
+            self.scrub(event, cx);
+            return;
+        }
+        let (x, y) = match event.delta {
+            ScrollDelta::Lines(lines) => (lines.x, lines.y),
+            ScrollDelta::Pixels(pixels) => (f32::from(pixels.x), f32::from(pixels.y)),
+        };
+        if event.modifiers.shift || y.abs() <= x.abs() || self.scrub_hinted {
+            return;
+        }
+        // A notice already up is likely a failure, which outranks a hint.
+        if self.notice.is_none() {
+            self.scrub_hinted = true;
+            self.show_notice(
+                Notice::new(Kind::Info, SCRUB_HINT).timeout(SCRUB_HINT_TIMEOUT),
+                cx,
+            );
+        }
     }
 
     /// A notch down is a quarter hour later, the way the night moves. It is an
     /// ordinary pin, so everything follows it and escape undoes it.
     fn scrub(&mut self, event: &ScrollWheelEvent, cx: &mut Context<Self>) {
         let notches = match event.delta {
-            ScrollDelta::Lines(lines) => lines.y,
+            ScrollDelta::Lines(lines) => lines.y / NOTCH_LINES,
             ScrollDelta::Pixels(pixels) => f32::from(pixels.y) / NOTCH_PIXELS,
         };
         // A trackpad sends small deltas; carry the fraction to the next one.
@@ -143,35 +242,51 @@ impl Elsewhere {
         let zones = self.zone_borders.clone();
         let remembered = self.map_layout.clone();
         let scroll = self.map_scroll.clone();
-        let focus = self.focus();
+        let framed = self.framed();
+        let frame = self.map_frame.clone();
+        // What the banner adds above the map when it shows.
+        let lift = if self.pinned.is_some() {
+            BANNER_HEIGHT + GAP
+        } else {
+            px(0.)
+        };
         let sun = geo::subsolar(now);
 
         canvas(
             move |bounds, window, _cx| {
                 // Fit to the region, not the canvas, which may already be
                 // wider. The scroller has measured it by now.
-                let viewport = scroll.bounds().size;
-                let rect = fit(viewport);
+                let region = scroll.bounds();
+                let viewport = region.size;
+                // The room the map would have with neither the banner nor a
+                // notice, taken from the window so that both leave it alone.
+                let top = region.top() - lift;
+                let bottom = window.viewport_size().height - (FOOTER_HEIGHT + GAP + PAD_BOTTOM);
+                let level = (top + bottom) / 2. - region.top();
+                // As tall as it can be with the banner shown, so pinning a
+                // time never rescales it.
+                let tallest = bottom - top - (BANNER_HEIGHT + GAP);
+                let refit = frame.get().is_none() && viewport.width > px(0.);
+                let framing = match frame.get() {
+                    Some(framing) => framing,
+                    None => frame_on(&framed, viewport.width),
+                };
+                if refit {
+                    frame.set(Some(framing));
+                }
+                let rect = fit(viewport, framing.zoom, tallest, level);
                 let layout = Layout { viewport, rect };
                 let before = remembered.get();
-                if before != Some(layout) {
+                if refit || before != Some(layout) {
                     remembered.set(Some(layout));
                     if layout.overflows() {
-                        let middle = match before.filter(Layout::overflows) {
+                        let middle = match before.filter(|before| !refit && before.overflows()) {
                             // Keep the middle longitude through the resize.
                             Some(before) => {
                                 (before.viewport.width / 2. - scroll.offset().x)
                                     / before.rect.size.width
                             }
-                            // Just overflowed: start on the reader's own
-                            // longitude rather than the Pacific.
-                            None => {
-                                geo::project(LonLat {
-                                    lon: focus,
-                                    lat: 0.0,
-                                })
-                                .0 as f32
-                            }
+                            None => framing.middle,
                         };
                         let most = rect.size.width - viewport.width;
                         let left =
@@ -226,24 +341,44 @@ impl Elsewhere {
                 // The bottom edge runs through open ocean, where the zones are
                 // the plain nautical ones.
                 let font = window.text_style().font();
-                for (lon, hours) in offset_marks() {
-                    let text = clock::offset_label(jiff::tz::offset(hours));
-                    let run = TextRun {
-                        len: text.len(),
-                        font: font.clone(),
-                        color: rgb(theme::OVERLAY2).into(),
-                        background_color: None,
-                        underline: None,
-                        strikethrough: None,
-                    };
-                    let line =
-                        window
-                            .text_system()
-                            .shape_line(text.into(), OFFSET_SIZE, &[run], None);
-                    let origin = point(
-                        at(LonLat { lon, lat: 0.0 }).x - line.width / 2.,
-                        rect.bottom() - TICK - OFFSET_GAP - OFFSET_LINE,
-                    );
+                let lines: Vec<_> = offset_marks()
+                    .map(|(lon, hours)| {
+                        let text = clock::offset_label(jiff::tz::offset(hours));
+                        let run = TextRun {
+                            len: text.len(),
+                            font: font.clone(),
+                            color: rgb(theme::OVERLAY2).into(),
+                            background_color: None,
+                            underline: None,
+                            strikethrough: None,
+                        };
+                        let line =
+                            window
+                                .text_system()
+                                .shape_line(text.into(), OFFSET_SIZE, &[run], None);
+                        (lon, hours, line)
+                    })
+                    .collect();
+                // A map fitted narrow has too little room for every hour, so
+                // it marks every other one rather than run them together.
+                let widest = lines
+                    .iter()
+                    .map(|(_, _, line)| line.width)
+                    .max()
+                    .unwrap_or_default();
+                let every = if rect.size.width / 24. < widest + OFFSET_ROOM {
+                    2
+                } else {
+                    1
+                };
+                for (lon, hours, line) in lines {
+                    if hours % every != 0 {
+                        continue;
+                    }
+                    // ±12 straddle the map's ends, so they are kept inside.
+                    let left = (at(LonLat { lon, lat: 0.0 }).x - line.width / 2.)
+                        .clamp(rect.left(), (rect.right() - line.width).max(rect.left()));
+                    let origin = point(left, rect.bottom() - TICK - OFFSET_GAP - OFFSET_LINE);
                     // A label that fails to paint is only a label missing.
                     line.paint(origin, OFFSET_LINE, window, cx).ok();
                 }
@@ -272,14 +407,94 @@ impl Elsewhere {
     }
 }
 
-/// The window is tall first, so the map takes the full height: centred when
-/// that leaves it narrower than `area`, flush left for the scroller when wider.
-pub(super) fn fit(area: Size<Pixels>) -> Bounds<Pixels> {
-    let width = area.height * geo::aspect() as f32;
+/// Frames `xs`, shares of the world's width, across `width` with a margin
+/// either side. Nothing to frame frames the whole world. The map is one
+/// unwrapped world, so cities either side of the date line frame the arc
+/// between them the long way round, as the map draws it.
+fn frame_on(xs: &[f32], width: Pixels) -> Frame {
+    let west = xs.iter().copied().reduce(f32::min);
+    let east = xs.iter().copied().reduce(f32::max);
+    let (Some(west), Some(east)) = (west, east) else {
+        return Frame {
+            zoom: 1.0,
+            middle: 0.5,
+        };
+    };
+    let room = if width > px(0.) {
+        (1.0 - 2.0 * (MARGIN / width)).max(0.0)
+    } else {
+        1.0
+    };
+    Frame {
+        zoom: room / (east - west).max(MIN_SPAN),
+        middle: (west + east) / 2.0,
+    }
+}
+
+/// The scale comes from the width alone, `zoom` viewports wide, so a change
+/// in height, as the banner or a notice comes and goes, moves only the
+/// letterbox. It never shrinks below the viewport's width, as the whole
+/// world, nor grows past `tallest`, the most height the map may have.
+/// Vertically it centres on `level`, kept inside the viewport; across, it is
+/// centred when narrower than the viewport and flush left for the scroller
+/// when wider.
+pub(super) fn fit(
+    viewport: Size<Pixels>,
+    zoom: f32,
+    tallest: Pixels,
+    level: Pixels,
+) -> Bounds<Pixels> {
+    let aspect = geo::aspect() as f32;
+    let widest = tallest.max(px(1.)) * aspect;
+    let width = (viewport.width * zoom).clamp(viewport.width.min(widest), widest);
+    let height = width / aspect;
+    let top = (level - height / 2.).clamp(px(0.), (viewport.height - height).max(px(0.)));
     Bounds::new(
-        point(((area.width - width) / 2.).max(px(0.)), px(0.)),
-        size(width, area.height),
+        point(((viewport.width - width) / 2.).max(px(0.)), top),
+        size(width, height),
     )
+}
+
+/// Follows a pan anywhere in the window, so the map keeps up when the pointer
+/// leaves it. Listens only while one is in progress.
+fn pan(grab: Rc<Cell<Option<Pan>>>, scroll: ScrollHandle) -> impl IntoElement {
+    canvas(
+        |_bounds, _window, _cx| {},
+        move |_bounds, (), window, _cx| {
+            if grab.get().is_none() {
+                return;
+            }
+            window.set_window_cursor_style(CursorStyle::ClosedHand);
+            window.on_mouse_event({
+                let grab = grab.clone();
+                move |event: &MouseMoveEvent, phase, window, _cx| {
+                    let Some(pan) = grab.get() else {
+                        return;
+                    };
+                    if phase != DispatchPhase::Bubble {
+                        return;
+                    }
+                    // The release happened where no listener saw it.
+                    if event.pressed_button != Some(MouseButton::Left) {
+                        grab.set(None);
+                        window.refresh();
+                        return;
+                    }
+                    let most = scroll.max_offset().width;
+                    let x = (pan.offset.x + event.position.x - pan.from.x).clamp(-most, px(0.));
+                    scroll.set_offset(point(x, pan.offset.y));
+                    window.refresh();
+                }
+            });
+            window.on_mouse_event(move |event: &MouseUpEvent, _phase, window, _cx| {
+                if event.button == MouseButton::Left && grab.take().is_some() {
+                    window.refresh();
+                }
+            });
+        },
+    )
+    .absolute()
+    .inset_0()
 }
 
 /// `None` for too few points or a path lyon cannot tessellate.
@@ -346,39 +561,62 @@ mod tests {
     }
 
     #[test]
-    fn takes_the_height_and_overflows_a_taller_area() {
-        let rect = fit(size(px(400.), px(600.)));
-        assert_eq!(rect.origin, point(px(0.), px(0.)));
-        assert_eq!(rect.size.height, px(600.));
+    fn frames_the_cities_with_a_margin() {
+        let frame = frame_on(&[0.25, 0.75], px(400.));
+        assert!((frame.middle - 0.5).abs() < 1e-6);
+        // The half the world between them fills all but the margins.
+        let rect = fit(size(px(400.), px(600.)), frame.zoom, px(600.), px(300.));
+        let span = f32::from(rect.size.width) * 0.5;
+        assert!((span - (400. - 2. * 16.)).abs() < 0.01, "{rect:?}");
+    }
+
+    #[test]
+    fn frames_the_world_with_no_cities() {
+        let frame = frame_on(&[], px(400.));
+        let rect = fit(size(px(400.), px(600.)), frame.zoom, px(600.), px(300.));
+        assert!(close(rect.size.width, 400.), "{rect:?}");
+        assert_eq!(rect.origin.x, px(0.));
+    }
+
+    #[test]
+    fn one_city_frames_a_region_not_a_point() {
+        let frame = frame_on(&[0.4], px(400.));
+        assert!(frame.zoom <= 3.0, "{frame:?}");
+    }
+
+    #[test]
+    fn a_height_change_moves_only_the_letterbox() {
+        let tall = fit(size(px(400.), px(600.)), 2.0, px(500.), px(300.));
+        let short = fit(size(px(400.), px(560.)), 2.0, px(500.), px(300.));
+        assert_eq!(tall.size, short.size);
+        assert!(close(tall.size.width, 800.), "{tall:?}");
         assert!(
-            close(rect.size.width, 600. * (360. / 140.)),
-            "{rect:?} is not the map's aspect"
+            close(tall.origin.y + tall.size.height / 2., 300.),
+            "{tall:?} is not centred on its level"
         );
     }
 
     #[test]
-    fn fills_the_width_exactly_at_the_maps_own_shape() {
-        let rect = fit(size(px(360.), px(140.)));
-        assert_eq!(rect.origin, point(px(0.), px(0.)));
-        assert!(
-            close(rect.size.width, 360.),
-            "{rect:?} is not the full width"
-        );
-        assert_eq!(rect.size.height, px(140.));
+    fn never_grows_past_the_tallest_it_may_be() {
+        let rect = fit(size(px(400.), px(300.)), 10.0, px(200.), px(150.));
+        assert!(close(rect.size.height, 200.), "{rect:?}");
+        assert!(close(rect.size.width, 200. * (360. / 140.)), "{rect:?}");
     }
 
     #[test]
-    fn centres_across_the_width_when_the_height_is_the_limit() {
-        let rect = fit(size(px(400.), px(100.)));
-        assert_eq!(rect.origin.y, px(0.));
-        assert_eq!(rect.size.height, px(100.));
+    fn centres_across_a_window_wider_than_the_tallest_map() {
+        let rect = fit(size(px(800.), px(200.)), 1.0, px(100.), px(100.));
+        assert!(close(rect.size.height, 100.), "{rect:?}");
         assert!(
-            close(rect.size.width, 100. * (360. / 140.)),
-            "{rect:?} is not the map's aspect"
-        );
-        assert!(
-            close(rect.origin.x + rect.size.width / 2., 200.),
+            close(rect.origin.x + rect.size.width / 2., 400.),
             "{rect:?} is not centred"
         );
+        assert!(close(rect.origin.y, 50.), "{rect:?}");
+    }
+
+    #[test]
+    fn stays_inside_the_viewport_when_its_level_is_off_centre() {
+        let rect = fit(size(px(400.), px(300.)), 1.0, px(300.), px(20.));
+        assert_eq!(rect.origin.y, px(0.));
     }
 }

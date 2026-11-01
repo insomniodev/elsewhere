@@ -2,8 +2,8 @@
 //! hover, click and drag like the list's rows do.
 
 use gpui::{
-    AnyElement, Context, ElementId, Font, Pixels, Point, SharedString, Size, TextRun, Window, div,
-    point, prelude::*, px, rems, rgb,
+    AnyElement, Context, ElementId, Font, MouseButton, Pixels, Point, SharedString, Size, TextRun,
+    Window, div, point, prelude::*, px, rems, rgb,
 };
 use jiff::Zoned;
 
@@ -19,6 +19,8 @@ use crate::theme;
 /// The radius is what the label placement keeps clear.
 const DOT: Pixels = px(7.);
 const RADIUS: f32 = 3.5;
+/// What takes the pointer for a dot: far easier to hit than the dot drawn.
+const HIT: Pixels = px(20.);
 
 const LABEL_HEIGHT: f32 = 16.0;
 const LABEL_GAP: f32 = 3.0;
@@ -54,19 +56,24 @@ impl Elsewhere {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        let Some(rect) = self.map_rect() else {
+        let Some(layout) = self.map_layout.get() else {
             return Vec::new();
         };
+        let rect = layout.rect;
         let markers = self.markers(saved, now, rect.size, window);
         let dots: Vec<(f32, f32)> = markers.iter().map(|m| (m.centre.x, m.centre.y)).collect();
         let sizes: Vec<(f32, f32)> = markers.iter().map(|m| (m.width, LABEL_HEIGHT)).collect();
-        let slots = labels::place(
-            &dots,
-            &sizes,
-            RADIUS,
-            LABEL_GAP,
-            (f32::from(rect.size.width), f32::from(rect.size.height)),
-        );
+        // What the viewport shows of the map, so a label keeps clear of its
+        // edges rather than of the map's, most of which is scrolled away.
+        let left = -f32::from(self.map_scroll.offset().x) - f32::from(rect.origin.x);
+        let shown = left.max(0.0);
+        let frame = labels::Slot {
+            x: shown,
+            y: 0.0,
+            w: (left + f32::from(layout.viewport.width)).min(f32::from(rect.size.width)) - shown,
+            h: f32::from(rect.size.height),
+        };
+        let slots = labels::place(&dots, &sizes, RADIUS, LABEL_GAP, frame);
 
         let origin = rect.origin;
         let mut elements: Vec<AnyElement> = Vec::with_capacity(markers.len() * 2);
@@ -181,7 +188,8 @@ impl Elsewhere {
     }
 
     /// Hollow for here, since that is the reader's place rather than an
-    /// elsewhere.
+    /// elsewhere. The dot is drawn in the middle of a larger, invisible hit
+    /// square that hovers, clicks and drags for it.
     fn render_dot(
         &self,
         marker: &Marker,
@@ -202,20 +210,30 @@ impl Elsewhere {
         };
         let dot = div()
             .id(id)
+            .group("dot")
             .absolute()
-            .left(centre.x - px(RADIUS))
-            .top(centre.y - px(RADIUS))
-            .w(DOT)
-            .h(DOT)
-            .rounded_full()
-            .bg(rgb(theme::BLUE))
-            .when(marker.home, |dot| {
-                dot.bg(rgb(theme::BASE))
-                    .border(px(1.5))
-                    .border_color(rgb(theme::BLUE))
-            })
-            .hover(|style| style.bg(rgb(theme::TEXT)))
-            .tooltip(Tooltip::text(tip));
+            .left(centre.x - HIT / 2.)
+            .top(centre.y - HIT / 2.)
+            .w(HIT)
+            .h(HIT)
+            .flex()
+            .items_center()
+            .justify_center()
+            .tooltip(Tooltip::text(tip))
+            .child(
+                div()
+                    .w(DOT)
+                    .h(DOT)
+                    .rounded_full()
+                    .bg(rgb(theme::BLUE))
+                    .when(marker.home, |dot| {
+                        dot.bg(rgb(theme::BASE))
+                            .border(px(1.5))
+                            .border_color(rgb(theme::BLUE))
+                    })
+                    .group_hover("dot", |style| style.bg(rgb(theme::TEXT))),
+            );
+        // Here's marker neither drags nor edits, so a press on it pans.
         let Some(geonameid) = marker.geonameid else {
             return dot.into_any_element();
         };
@@ -224,8 +242,18 @@ impl Elsewhere {
             .city(geonameid)
             .map(|city| self.index.label(city))
             .unwrap_or_default();
-        // The dot is the whole handle, as the row is in the list.
+        let time = marker.time.clone();
+        // The dot is the whole handle, as the row is in the list, and opens
+        // the editor its label's time does, where there is a label to hold it.
         dot.cursor_grab()
+            .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
+                cx.stop_propagation()
+            })
+            .when(marker.known && !unlabelled, |dot| {
+                dot.on_click(cx.listener(move |this, _event, window, cx| {
+                    this.edit(geonameid, time.clone(), window, cx)
+                }))
+            })
             .on_drag(DragRow { geonameid, label }, Self::drag_preview(cx))
             .when(dragging && self.drag == Some(geonameid), |dot| {
                 dot.opacity(0.4)
@@ -258,12 +286,20 @@ impl Elsewhere {
             // Taller than the line, so it overhangs rather than moving the
             // label.
             Some(geonameid) => match &self.editing {
-                Some((editing, input)) if *editing == geonameid => {
-                    self.render_editor(input, cx).flex_none().into_any_element()
-                }
+                Some((editing, input)) if *editing == geonameid => self
+                    .render_editor(input, cx)
+                    .flex_none()
+                    .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
+                        cx.stop_propagation()
+                    })
+                    .into_any_element(),
                 _ => cell(ElementId::from(("map-time", geonameid as usize)))
                     .when(marker.known, |cell| {
                         cell.cursor_pointer()
+                            // A press here edits rather than pans.
+                            .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
+                                cx.stop_propagation()
+                            })
                             .rounded_sm()
                             .hover(|style| style.bg(rgb(theme::SURFACE0)))
                             .on_click(cx.listener(move |this, _event, window, cx| {

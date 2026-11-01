@@ -13,7 +13,6 @@ use crate::theme;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Kind {
-    #[expect(dead_code, reason = "undo (UX-11) and no results (UX-12) use it")]
     Info,
     /// Something the user should know did not happen.
     Failure,
@@ -51,7 +50,6 @@ impl Notice {
     }
 
     /// For news that needs no answer; failures should stay until read.
-    #[expect(dead_code, reason = "undo (UX-11) and no results (UX-12) use it")]
     pub(super) fn timeout(mut self, after: Duration) -> Self {
         self.timeout = Some(after);
         self

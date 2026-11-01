@@ -3,8 +3,8 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use gpui::{
-    Axis, Context, Entity, ScrollHandle, SharedString, Subscription, Task, Window, actions, div,
-    prelude::*, px, rgb,
+    Axis, Context, Entity, Pixels, ScrollHandle, SharedString, Subscription, Task, Window, actions,
+    div, prelude::*, px, rgb,
 };
 use jiff::{RoundMode, Span, Unit, Zoned, ZonedRound};
 
@@ -45,12 +45,18 @@ actions!(pin_editor, [Commit, Cancel]);
 // nothing of its own to clear.
 actions!(elsewhere, [Unpin, Later, Earlier]);
 
-/// One wheel notch over the map, or one press of Later or Earlier.
+/// One ctrl+wheel notch over the map, or one press of Later or Earlier.
 const STEP_MINUTES: i64 = 15;
 
 /// How long the window must hold still before its bounds are written, so a
 /// drag writes once rather than every frame.
 const BOUNDS_SETTLE: Duration = Duration::from_millis(500);
+
+/// Between the window's stacked parts. The map reads it, with the banner's
+/// and footer's heights, to know the room it has without them.
+const GAP: Pixels = px(12.);
+/// Under the footer.
+const PAD_BOTTOM: Pixels = px(16.);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum View {
@@ -148,6 +154,12 @@ pub struct Elsewhere {
     /// known, for whatever is laid over the map to read back.
     map_layout: Rc<Cell<Option<map::Layout>>>,
     map_scroll: ScrollHandle,
+    /// The map's zoom and middle, kept between fits. `None` fits it to the
+    /// cities on the next frame. Shared for the same reason as `map_layout`.
+    map_frame: Rc<Cell<Option<map::Frame>>>,
+    /// A drag on the map's body in progress. Shared with the listeners that
+    /// follow the pointer outside the map.
+    map_pan: Rc<Cell<Option<map::Pan>>>,
     grid_scroll: ScrollHandle,
     /// The grid's vertical scroll through the day.
     grid_hours: ScrollHandle,
@@ -156,6 +168,9 @@ pub struct Elsewhere {
     grid_at_now: Rc<Cell<bool>>,
     /// Wheel motion over the map that has not yet added up to a whole notch.
     scrub_carry: f32,
+    /// Whether a plain wheel over the map has said how to scrub, which it
+    /// does once a session.
+    scrub_hinted: bool,
     /// The system's mono face for the times, if it has one.
     mono: Option<SharedString>,
     /// Dropping it stops the clock.
@@ -231,10 +246,13 @@ impl Elsewhere {
             zone_borders: Rc::new(zones::load()),
             map_layout: Rc::new(Cell::new(None)),
             map_scroll: ScrollHandle::new(),
+            map_frame: Rc::new(Cell::new(None)),
+            map_pan: Rc::new(Cell::new(None)),
             grid_scroll: ScrollHandle::new(),
             grid_hours: ScrollHandle::new(),
             grid_at_now: Rc::new(Cell::new(false)),
             scrub_carry: 0.,
+            scrub_hinted: false,
             mono: row::mono(cx),
             _tick: tick(cx),
         }
@@ -441,11 +459,11 @@ impl Render for Elsewhere {
             .size_full()
             .flex()
             .flex_col()
-            .gap_3()
+            .gap(GAP)
             // The title bar sits in what would be the top padding.
             .px_4()
             .pt_1()
-            .pb_4()
+            .pb(PAD_BOTTOM)
             .bg(rgb(theme::BASE))
             .text_color(rgb(theme::TEXT))
             .child(self.render_titlebar(window, cx))

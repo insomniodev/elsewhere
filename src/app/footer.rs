@@ -9,6 +9,11 @@ use super::{Elsewhere, View};
 use crate::clock::{self, Format};
 use crate::theme;
 
+/// The banner's and footer's heights, which the map reads to hold still as
+/// the banner comes and goes.
+pub(super) const BANNER_HEIGHT: Pixels = px(24.);
+pub(super) const FOOTER_HEIGHT: Pixels = px(24.);
+
 struct Toggle {
     id: &'static str,
     icon: &'static str,
@@ -98,6 +103,10 @@ impl Elsewhere {
             return;
         }
         self.view = to;
+        // The map opens framed on the cities, wherever it was left.
+        if to == View::Map {
+            self.map_frame.set(None);
+        }
         // The grid opens on now each time, wherever it was left.
         self.grid_at_now.set(false);
         // Not every view has a box for an open editor, and its focus would be
@@ -175,6 +184,25 @@ impl Elsewhere {
             }))
     }
 
+    /// In every view, so the controls never jump, but live only on the map.
+    fn render_fit(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        Button::new("fit", "icons/fit.svg", px(14.))
+            .disabled(self.view != View::Map)
+            .tooltip(Tooltip::live(cx.entity(), |this| {
+                if this.view == View::Map {
+                    "fit the map to your cities"
+                } else {
+                    "only on a map"
+                }
+                .into()
+            }))
+            .on_click(cx.listener(|this, _event, _window, cx| {
+                this.map_frame.set(None);
+                cx.notify();
+            }))
+            .build()
+    }
+
     /// A pin with no row reads here. Shown only while pinned:
     /// entering a mode on purpose earns the layout shift. Names the pinned
     /// day once it leaves today, since the rows' day tags are relative to it,
@@ -214,7 +242,7 @@ impl Elsewhere {
                 .justify_between()
                 .gap_2()
                 .items_center()
-                .h_6()
+                .h(BANNER_HEIGHT)
                 .px_2()
                 .rounded_md()
                 .border_1()
@@ -291,7 +319,7 @@ impl Elsewhere {
             .flex_row()
             .justify_between()
             .items_center()
-            .h_6()
+            .h(FOOTER_HEIGHT)
             .text_xs()
             .child(
                 div()
@@ -299,6 +327,7 @@ impl Elsewhere {
                     .flex_row()
                     .gap_1()
                     .child(self.render_switch(cx))
+                    .child(self.render_fit(cx))
                     .children((dragging && self.drag.is_some()).then(|| self.render_bin(cx))),
             )
             .child(
