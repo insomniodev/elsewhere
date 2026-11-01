@@ -1,6 +1,6 @@
 use gpui::{
-    App, Context, Div, Entity, Focusable, Pixels, SharedString, Window, div, prelude::*, px, rgb,
-    rgba,
+    App, Context, Div, Entity, EntityInputHandler, Focusable, Pixels, SharedString, Window,
+    deferred, div, prelude::*, px, rgb, rgba,
 };
 use jiff::Zoned;
 
@@ -71,8 +71,9 @@ impl Elsewhere {
         cx.notify();
     }
 
-    /// The current reading goes in as the placeholder, since the input cannot
-    /// be prefilled.
+    /// Opens on the current reading, as shown, selected: typing replaces it
+    /// and an arrow key drops the cursor in to nudge it. It is the
+    /// placeholder too, for when the field is cleared.
     pub(super) fn edit(
         &mut self,
         geonameid: u32,
@@ -80,7 +81,16 @@ impl Elsewhere {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let input = cx.new(|cx| TextInput::new(current, cx));
+        let input = cx.new(|cx| {
+            let mut input = TextInput::new(current.clone(), cx);
+            // Marking then unmarking is the vendored input's only way to set
+            // text with a selection. It notifies before `retime` observes, so
+            // opening pins nothing.
+            let all = current.encode_utf16().count();
+            input.replace_and_mark_text_in_range(None, &current, Some(0..all), window, cx);
+            input.unmark_text(window, cx);
+            input
+        });
         window.focus(&input.focus_handle(cx));
         // Not over one already open, which is still the editor's own pin.
         if self.editing.is_none() {
@@ -91,9 +101,9 @@ impl Elsewhere {
         cx.notify();
     }
 
-    /// Re-pins on each keystroke that reads as a time, so the other rows
-    /// follow as the user types. On the pin's day, if there is one, so a
-    /// typed time keeps the day being explored.
+    /// Re-pins on each keystroke that leaves a whole time, so the other rows
+    /// follow as the user types; other text keeps the last pin. On the pin's
+    /// day, if there is one, so a typed time keeps the day being explored.
     fn retime(&mut self, input: Entity<TextInput>, cx: &mut Context<Self>) {
         let Some((geonameid, editor)) = &self.editing else {
             return;
@@ -113,13 +123,23 @@ impl Elsewhere {
                 anchor: Some(*geonameid),
                 at: pinned,
             });
-            cx.notify();
         }
+        // Even unpinned, for the hint.
+        cx.notify();
     }
 
-    /// Keeps any pin; only the editor goes.
+    /// Keeps the pin typed. Cleared text backs out as escape does; text that
+    /// is not a time keeps the editor open under its hint.
     fn commit(&mut self, _: &Commit, window: &mut Window, cx: &mut Context<Self>) {
-        self.close_editor(window, cx);
+        let Some((_, input)) = &self.editing else {
+            return;
+        };
+        let text = input.read(cx).text();
+        if text.trim().is_empty() {
+            self.cancel(&Cancel, window, cx);
+        } else if clock::wall(text).is_some() {
+            self.close_editor(window, cx);
+        }
     }
 
     fn cancel(&mut self, _: &Cancel, window: &mut Window, cx: &mut Context<Self>) {
@@ -137,14 +157,39 @@ impl Elsewhere {
     /// Enter and escape fall through the vendored input, so the wrapper
     /// carries the context that catches them. The map opens the same editor.
     pub(super) fn render_editor(&self, input: &Entity<TextInput>, cx: &mut Context<Self>) -> Div {
+        let text = input.read(cx).text();
+        let invalid = !text.trim().is_empty() && clock::wall(text).is_none();
         div()
+            .relative()
             .key_context("PinEditor")
             .on_action(cx.listener(Self::commit))
             .on_action(cx.listener(Self::cancel))
             .w(time_width(self.format))
             .h(TIME_HEIGHT)
-            .when_some(self.mono.clone(), Styled::font_family)
-            .child(input.clone())
+            .child(
+                div()
+                    .size_full()
+                    .when_some(self.mono.clone(), Styled::font_family)
+                    .child(input.clone()),
+            )
+            // Floated so the rows hold still: it overlaps the next row's
+            // right end for as long as the text is wrong, and deferred so it
+            // paints over that row and past the list's clip under the last.
+            .when(invalid, |editor| {
+                editor.child(deferred(
+                    div()
+                        .absolute()
+                        .top_full()
+                        .right_0()
+                        .px_1()
+                        .rounded_sm()
+                        .bg(rgb(theme::BASE))
+                        .whitespace_nowrap()
+                        .text_xs()
+                        .text_color(rgb(theme::RED))
+                        .child("try 9:30 pm or 21:30"),
+                ))
+            })
     }
 
     /// Set where the first saved row will go.

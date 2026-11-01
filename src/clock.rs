@@ -219,8 +219,8 @@ pub fn pinned_day(pinned: &Zoned, zone: &TimeZone, real: &Zoned) -> Option<Strin
 /// When `zone`'s wall clock reads `text` on the day `reference` reads over
 /// there, held in `reference`'s zone, home, so day hints stay relative to
 /// home. The reference is the pin being edited, else now, so typing a time
-/// keeps the day being explored. Both "HH:MM" and "h:mm am" are accepted
-/// whatever the display format, so typing need not match the row.
+/// keeps the day being explored. Any form `wall` reads is accepted whatever
+/// the display format, so typing need not match the row.
 pub fn pin(text: &str, zone: &TimeZone, reference: &Zoned) -> Option<Zoned> {
     let (hour, minute) = wall(text)?;
     let date = reference.with_time_zone(zone.clone()).date();
@@ -230,20 +230,37 @@ pub fn pin(text: &str, zone: &TimeZone, reference: &Zoned) -> Option<Zoned> {
     Some(there.with_time_zone(reference.time_zone().clone()))
 }
 
-/// As a 24-hour clock. A trailing "am" or "pm", in any case and with or
-/// without a space, makes the hour a 12-hour one.
-fn wall(text: &str) -> Option<(i8, i8)> {
+/// The whole of `text` as a wall time, 24-hour unless it ends in "am", "pm",
+/// "a" or "p" (any case, space optional): "9", "17", "9:30", "0930" and
+/// "9pm" all read. Anything else is `None`, a prefix of a time included, so
+/// "14:3" is not 14:03 and the editor cannot pin from half-typed text.
+pub fn wall(text: &str) -> Option<(i8, i8)> {
     let text = text.trim().to_ascii_lowercase();
-    let (text, half) = match text.strip_suffix("am") {
-        Some(rest) => (rest, Some(false)),
-        None => match text.strip_suffix("pm") {
-            Some(rest) => (rest, Some(true)),
-            None => (text.as_str(), None),
+    let (clock, half) = if let Some(rest) = text.strip_suffix("am").or(text.strip_suffix('a')) {
+        (rest, Some(false))
+    } else if let Some(rest) = text.strip_suffix("pm").or(text.strip_suffix('p')) {
+        (rest, Some(true))
+    } else {
+        (text.as_str(), None)
+    };
+    let clock = clock.trim_end();
+    // ASCII only from here, so the byte slicing below is on char boundaries.
+    if !clock.bytes().all(|b| b.is_ascii_digit() || b == b':') {
+        return None;
+    }
+    let (hour, minute) = match clock.split_once(':') {
+        Some((hour, minute)) if (1..=2).contains(&hour.len()) && minute.len() == 2 => {
+            (hour, minute)
+        }
+        Some(_) => return None,
+        None => match clock.len() {
+            1 | 2 => (clock, "00"),
+            4 => clock.split_at(2),
+            _ => return None,
         },
     };
-    let (hour, minute) = text.split_once(':')?;
-    let hour: i8 = hour.trim().parse().ok()?;
-    let minute: i8 = minute.trim().parse().ok()?;
+    let hour: i8 = hour.parse().ok()?;
+    let minute: i8 = minute.parse().ok()?;
     let hour = match half {
         None => hour,
         Some(_) if !(1..=12).contains(&hour) => return None,
@@ -476,9 +493,40 @@ mod tests {
     fn text_that_is_not_a_time_does_not_pin() {
         let now = at("2026-08-15T12:00:00Z", "UTC");
         for text in [
-            "", "noon", "12", "25:00", "12:60", "-1:30", "1:2:3", "0:30 am", "13:00 pm", "9:30 xm",
+            "", "noon", "25:00", "12:60", "-1:30", "1:2:3", "0:30 am", "13:00 pm", "9:30 xm",
         ] {
             assert_eq!(pin(text, &zone("UTC"), &now), None, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn reads_hours_alone_and_without_a_colon() {
+        for (text, expected) in [
+            ("9", (9, 0)),
+            ("09", (9, 0)),
+            ("17", (17, 0)),
+            ("0", (0, 0)),
+            ("9pm", (21, 0)),
+            ("9 P", (21, 0)),
+            ("12a", (0, 0)),
+            ("12 pm", (12, 0)),
+            ("0930", (9, 30)),
+            ("1430", (14, 30)),
+            ("0930pm", (21, 30)),
+            ("9:05a", (9, 5)),
+            ("23:59", (23, 59)),
+        ] {
+            assert_eq!(wall(text), Some(expected), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn a_prefix_of_a_time_is_not_one() {
+        for text in [
+            "14:3", "14:3x", "14:", ":30", "143", "14305", "1:300", "9 m", "9m", "9:30 a m", "pm",
+            "+9", "9.30", "１４", "24", "0pm", "13p", "1460", "2400",
+        ] {
+            assert_eq!(wall(text), None, "{text:?}");
         }
     }
 
