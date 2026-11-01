@@ -1,0 +1,15 @@
+# Runs and drives the app in a headless sway session (see AGENTS.md). It needs
+# the Wayland runtime dir and a GPU, so it must run outside Codex's sandbox.
+# The program token can't be a union, hence one rule per spelling.
+prefix_rule(
+    pattern = ["scripts/sandbox.sh"],
+    decision = "allow",
+    justification = "Drives the app in a private headless session",
+    match = ["scripts/sandbox.sh launch"],
+)
+prefix_rule(
+    pattern = ["./scripts/sandbox.sh"],
+    decision = "allow",
+    justification = "Drives the app in a private headless session",
+    match = ["./scripts/sandbox.sh launch"],
+)
