@@ -31,11 +31,11 @@ const FORMAT: Toggle = Toggle {
     tips: ["show 12-hour time", "showing 12-hour time"],
     click: Elsewhere::toggle_format,
     on: |this| this.format == Format::Twelve,
-    // Any view that shows a time takes it; of the empty ones only the grid
-    // does (its "here" column), and the map's pins and the list's rows are
-    // the cities.
+    // Every view shows here's time, even empty, except a map with no city to
+    // mark here at.
     unavailable: |this| {
-        (this.saved.is_empty() && this.view != View::Grid).then_some("add a city first")
+        (this.saved.is_empty() && this.view == View::Map && this.here.place().is_none())
+            .then_some("add a city first")
     },
 };
 
@@ -174,7 +174,7 @@ impl Elsewhere {
             }))
     }
 
-    /// A pin with no row reads in this machine's zone. Shown only while pinned:
+    /// A pin with no row reads here. Shown only while pinned:
     /// entering a mode on purpose earns the layout shift.
     pub(super) fn render_banner(
         &self,
@@ -193,7 +193,7 @@ impl Elsewhere {
                 format!("viewing {time} in {}", city.name)
             }
             None => {
-                let time = clock::reading(now, now.time_zone(), self.format).time;
+                let time = clock::reading(now, &self.here.zone, self.format).time;
                 format!("viewing {time} here")
             }
         };

@@ -31,7 +31,8 @@ impl Elsewhere {
     }
 
     /// The name is all the room there is, so the tooltip carries the full
-    /// label and what the zone is called today.
+    /// label and what the zone is called today. The line under the name is
+    /// hours from here, or "here" on here's own column.
     fn render_head(
         &self,
         column: &Column,
@@ -39,11 +40,22 @@ impl Elsewhere {
         dragging: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        let offset = column.zone.as_ref().map(|zone| {
-            shortened(div())
-                .text_color(rgb(theme::OVERLAY2))
-                .child(clock::offset_label(zone.to_offset(now.timestamp())))
-        });
+        let here = column.geonameid.is_none() || column.geonameid == self.here.city;
+        let offset = if here {
+            Some(
+                self.here_tag("head-here-tag", now)
+                    .text_size(LABEL)
+                    .into_any_element(),
+            )
+        } else {
+            column.zone.as_ref().map(|zone| {
+                div()
+                    .text_color(rgb(theme::OVERLAY2))
+                    .child(clock::shift_label(zone, now))
+                    .into_any_element()
+            })
+        }
+        .map(|line| shortened(div()).child(line));
         let head = div()
             .flex_1()
             .min_w(COLUMN)
@@ -53,17 +65,12 @@ impl Elsewhere {
             .justify_end()
             .pb_2();
         let Some(geonameid) = column.geonameid else {
-            let tip = column
-                .zone
-                .as_ref()
-                .map(|zone| clock::zone_detail(zone, now))
-                .unwrap_or_default();
             return head
                 .child(
                     shortened(div().id("head-here"))
-                        .text_color(rgb(theme::OVERLAY2))
-                        .tooltip(Tooltip::text(tip))
-                        .child("here"),
+                        .text_color(rgb(theme::SUBTEXT0))
+                        .tooltip(Tooltip::text(clock::zone_detail(&self.here.zone, now)))
+                        .child(self.here.name.clone()),
                 )
                 .children(offset);
         };

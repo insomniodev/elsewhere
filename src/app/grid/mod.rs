@@ -7,6 +7,7 @@ use gpui::{Axis, Context, ElementId, Pixels, canvas, div, point, prelude::*, px,
 use jiff::Zoned;
 use jiff::tz::TimeZone;
 
+use super::here::hint_over;
 use super::scrollbar::scrollbar;
 use super::tooltip::Tooltip;
 use super::{Elsewhere, Pin};
@@ -30,7 +31,8 @@ const INSET: Pixels = px(8.);
 const BAR: Pixels = px(22.);
 
 struct Column {
-    /// `None` for home's column.
+    /// `None` for here's own column, drawn only while no saved city is in
+    /// the zone.
     geonameid: Option<u32>,
     /// `None` when the zone is unknown: the column keeps its head and rule but
     /// no labels.
@@ -44,16 +46,22 @@ impl Elsewhere {
         &self,
         order: &[u32],
         now: &Zoned,
+        empty: bool,
         dragging: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let day = hours::Day::of(now);
-        let home = Column {
+        // A saved city in the zone is here's column already.
+        let here = self.here.city.is_none().then(|| Column {
             geonameid: None,
-            zone: Some(now.time_zone().clone()),
-        };
+            zone: Some(self.here.zone.clone()),
+        });
+        // Alone, here's column keeps its own width at the left rather than
+        // stretching to set its labels against the far edge.
+        let alone = order.is_empty();
         // The list's order, so the westward toggle reorders the columns too.
-        let columns: Vec<Column> = std::iter::once(home)
+        let columns: Vec<Column> = here
+            .into_iter()
             .chain(order.iter().filter_map(|geonameid| {
                 let city = self.index.city(*geonameid)?;
                 Some(Column {
@@ -85,7 +93,7 @@ impl Elsewhere {
                         div()
                             .h_full()
                             .w(COLUMN * columns.len() as f32)
-                            .min_w_full()
+                            .when(!alone, |content| content.min_w_full())
                             .flex()
                             .flex_col()
                             .child(self.render_heads(&columns, now, dragging, cx))
@@ -117,6 +125,12 @@ impl Elsewhere {
                     .child(scrollbar(&self.grid_hours, Axis::Vertical, px(-6.))),
             )
             .child(scrollbar(&self.grid_scroll, Axis::Horizontal, px(-6.)))
+            // Beside here's column, not over its hours.
+            .when(empty, |grid| {
+                grid.child(hint_over(
+                    div().top(header::HEAD).bottom_0().left(COLUMN).right_0(),
+                ))
+            })
     }
 
     fn render_body(
@@ -204,7 +218,7 @@ impl Elsewhere {
         let slot = slot
             .when(shown.is_some(), |slot| slot.text_color(rgb(bright)))
             .child(label.clone());
-        // Home's column pins with no row behind it, as a scrub does.
+        // Here's column pins with no row behind it, as a scrub does.
         let (anchor, tip) = match column.geonameid {
             None => (None, format!("{label} here")),
             Some(id) => {

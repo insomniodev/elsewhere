@@ -5,6 +5,7 @@ use gpui::{
 use jiff::Zoned;
 
 use super::drag::{DragRow, drop_target};
+use super::here::{hint, tag};
 use super::{Cancel, Commit, Elsewhere, Pin};
 use crate::clock;
 use crate::theme;
@@ -133,14 +134,67 @@ impl Elsewhere {
             .child(input.clone())
     }
 
+    /// Set where the first saved row will go.
     pub(super) fn render_empty(&self) -> impl IntoElement + use<> {
         div()
             .h(TIME_HEIGHT)
             .flex()
             .items_center()
             .pl(WASH)
-            .text_color(rgb(theme::OVERLAY2))
-            .child("search for a city to start your list")
+            .child(hint())
+    }
+
+    /// Here's own row while no saved city is in the zone: first, and neither
+    /// a handle nor a drop target, since it is not one of the cities. Its
+    /// time reads like a row's but does not open the editor, which edits
+    /// saved cities.
+    pub(super) fn render_here_row(&self, now: &Zoned) -> impl IntoElement + use<> {
+        let time = clock::reading(now, &self.here.zone, self.format).time;
+        div().pb(GAP).child(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .pl(WASH)
+                .child(self.render_name(self.here.name.clone(), true, now))
+                .child(
+                    div()
+                        .w(time_width(self.format))
+                        .h(TIME_HEIGHT)
+                        .flex()
+                        .items_center()
+                        .justify_end()
+                        .px(px(6.))
+                        .when_some(self.mono.clone(), Styled::font_family)
+                        .when_some(
+                            self.pinned.as_ref().map(|pin| pin.accent().text),
+                            |cell, text| cell.text_color(rgb(text)),
+                        )
+                        .child(time),
+                ),
+        )
+    }
+
+    /// The name with the "here" mark beside it when it is here. The mark goes
+    /// next to the name rather than out by the time with the day tag, as the
+    /// name is what it describes.
+    fn render_name(&self, name: String, here: bool, now: &Zoned) -> impl IntoElement + use<> {
+        div()
+            .flex_1()
+            .min_w_0()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap_2()
+            .child(
+                div()
+                    .min_w_0()
+                    .truncate()
+                    .text_color(rgb(theme::SUBTEXT0))
+                    .child(name),
+            )
+            .when(here, |name| name.child(self.here_tag("here-row", now)))
     }
 
     /// `use<>`: the row borrows none of the arguments, so `render` can build
@@ -206,17 +260,8 @@ impl Elsewhere {
                     // A flex item's automatic minimum is its content, so a long
                     // label would shove the time past the right edge. `min_w_0`
                     // lets it give way and truncate instead.
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .text_color(rgb(theme::SUBTEXT0))
-                            .child(label),
-                    )
-                    .children(
-                        day.map(|day| div().text_xs().text_color(rgb(theme::OVERLAY2)).child(day)),
-                    )
+                    .child(self.render_name(label, self.here.city == Some(geonameid), now))
+                    .children(day.map(tag))
                     .child(match &self.editing {
                         Some((editing, input)) if *editing == geonameid => {
                             self.render_editor(input, cx).into_any_element()

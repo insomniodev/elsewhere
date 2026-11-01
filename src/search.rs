@@ -56,7 +56,6 @@ impl SearchIndex {
         }
     }
 
-    #[allow(dead_code)] // no caller yet; the UI looks cities up one at a time
     pub fn cities(&self) -> impl Iterator<Item = &City> {
         self.entries.iter().map(|entry| &entry.city)
     }

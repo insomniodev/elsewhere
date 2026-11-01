@@ -2,14 +2,15 @@
 //! hover, click and drag like the list's rows do.
 
 use gpui::{
-    AnyElement, Context, Font, Pixels, Point, SharedString, Size, TextRun, Window, div, point,
-    prelude::*, px, rems, rgb,
+    AnyElement, Context, ElementId, Font, Pixels, Point, SharedString, Size, TextRun, Window, div,
+    point, prelude::*, px, rems, rgb,
 };
 use jiff::Zoned;
 
 use super::labels;
 use crate::app::Elsewhere;
 use crate::app::drag::DragRow;
+use crate::app::here::tag;
 use crate::app::tooltip::Tooltip;
 use crate::clock;
 use crate::geo::{self, LonLat};
@@ -25,17 +26,18 @@ const LABEL_GAP: f32 = 3.0;
 const PART_GAP: Pixels = px(4.);
 
 struct Marker {
-    geonameid: u32,
+    /// `None` for here's own marker, which is not a saved city: it neither
+    /// drags nor opens the editor.
+    geonameid: Option<u32>,
     /// In the map rect's own coordinates.
     centre: Point<f32>,
-    /// The full name, for the tooltip.
-    label: String,
+    tip: String,
     name: String,
     time: String,
     day: Option<String>,
     /// Only a resolved zone can anchor a pin, as in the list.
     known: bool,
-    /// The machine's own zone.
+    /// Here, whether a saved city or the zone's seat.
     home: bool,
     /// The label's drawn width.
     width: f32,
@@ -73,6 +75,7 @@ impl Elsewhere {
                 elements.push(self.render_label(
                     marker,
                     origin + point(px(slot.x), px(slot.y)),
+                    now,
                     cx,
                 ));
             }
@@ -85,7 +88,8 @@ impl Elsewhere {
     }
 
     /// Order matters: `place` lets earlier markers win, and the saved order is
-    /// the one the user arranged.
+    /// the one the user arranged. Here's own marker, when no saved city is in
+    /// the zone, goes first: it is the reader's place.
     fn markers(
         &self,
         saved: &[u32],
@@ -93,7 +97,6 @@ impl Elsewhere {
         size: Size<Pixels>,
         window: &Window,
     ) -> Vec<Marker> {
-        let home = Zoned::now().time_zone().iana_name().map(str::to_string);
         let text = window.text_style().font();
         // All of a label is `text_xs`, so it reads as one line and stays small
         // enough to find room beside its dot.
@@ -105,50 +108,80 @@ impl Elsewhere {
             },
             None => text.clone(),
         };
+        let gap = f32::from(PART_GAP);
+        let here_width = gap + measure(window, "here", &text, text_size);
 
-        saved
-            .iter()
-            .filter_map(|geonameid| {
-                let city = self.index.city(*geonameid)?;
-                let reading = self
-                    .zones
-                    .get(&city.timezone)
-                    .map(|zone| clock::reading(now, zone, self.format));
-                let known = reading.is_some();
-                let (time, day) = match reading {
-                    Some(reading) => (reading.time, reading.day),
-                    None => (clock::UNKNOWN.to_string(), None),
-                };
-                let (x, y) = geo::project(LonLat {
-                    lon: city.longitude,
-                    lat: city.latitude,
-                });
-                let mut width = measure(window, &city.name, &text, text_size)
-                    + f32::from(PART_GAP)
+        // At the zone's seat, so a zone no saved city is in still gets one;
+        // a zone no city keeps has nowhere to go, and the list and grid carry
+        // here alone.
+        let seat = self
+            .here
+            .city
+            .is_none()
+            .then_some(self.here.seat)
+            .flatten()
+            .and_then(|geonameid| self.index.city(geonameid))
+            .map(|city| {
+                let time = clock::reading(now, &self.here.zone, self.format).time;
+                let width = measure(window, &self.here.name, &text, text_size)
+                    + here_width
+                    + gap
                     + measure(window, &time, &mono, text_size);
-                if let Some(day) = &day {
-                    width += f32::from(PART_GAP) + measure(window, day, &text, text_size);
-                }
-                Some(Marker {
-                    geonameid: *geonameid,
-                    centre: point(
-                        f32::from(size.width) * x as f32,
-                        f32::from(size.height) * y as f32,
-                    ),
-                    label: self.index.label(city),
-                    name: city.name.clone(),
+                Marker {
+                    geonameid: None,
+                    centre: centre(city.longitude, city.latitude, size),
+                    tip: format!("here · {}", clock::zone_detail(&self.here.zone, now)),
+                    name: self.here.name.clone(),
                     time,
-                    day,
-                    known,
-                    home: home.as_deref() == Some(city.timezone.as_str()),
+                    day: None,
+                    known: true,
+                    home: true,
                     width,
-                })
+                }
+            });
+
+        let cities = saved.iter().filter_map(|geonameid| {
+            let city = self.index.city(*geonameid)?;
+            let zone = self.zones.get(&city.timezone);
+            let reading = zone.map(|zone| clock::reading(now, zone, self.format));
+            let known = reading.is_some();
+            let (time, day) = match reading {
+                Some(reading) => (reading.time, reading.day),
+                None => (clock::UNKNOWN.to_string(), None),
+            };
+            let home = self.here.city == Some(*geonameid);
+            let label = self.index.label(city);
+            let tip = match zone {
+                _ if home => format!("{label} · here"),
+                Some(zone) => format!("{label} · {}", clock::shift_detail(zone, now)),
+                None => label,
+            };
+            let mut width = measure(window, &city.name, &text, text_size)
+                + gap
+                + measure(window, &time, &mono, text_size);
+            if home {
+                width += here_width;
+            }
+            if let Some(day) = &day {
+                width += gap + measure(window, day, &text, text_size);
+            }
+            Some(Marker {
+                geonameid: Some(*geonameid),
+                centre: centre(city.longitude, city.latitude, size),
+                tip,
+                name: city.name.clone(),
+                time,
+                day,
+                known,
+                home,
+                width,
             })
-            .collect()
+        });
+        seat.into_iter().chain(cities).collect()
     }
 
-    /// Hollow for the machine's own zone, since that is the reader's place
-    /// rather than an elsewhere.
+    /// Hollow for here, since that is the reader's place rather than an
+    /// elsewhere.
     fn render_dot(
         &self,
         marker: &Marker,
@@ -157,16 +190,18 @@ impl Elsewhere {
         dragging: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let geonameid = marker.geonameid;
         // Without a label, the tooltip is the only place to read the time.
         let tip = if unlabelled {
-            format!("{} · {}", marker.label, marker.time)
+            format!("{} · {}", marker.tip, marker.time)
         } else {
-            marker.label.clone()
+            marker.tip.clone()
         };
-        let label = marker.label.clone();
-        div()
-            .id(("dot", geonameid as usize))
+        let id = match marker.geonameid {
+            Some(geonameid) => ElementId::from(("dot", geonameid as usize)),
+            None => ElementId::from("dot-here"),
+        };
+        let dot = div()
+            .id(id)
             .absolute()
             .left(centre.x - px(RADIUS))
             .top(centre.y - px(RADIUS))
@@ -180,9 +215,17 @@ impl Elsewhere {
                     .border_color(rgb(theme::BLUE))
             })
             .hover(|style| style.bg(rgb(theme::TEXT)))
-            .tooltip(Tooltip::text(tip))
-            // The dot is the whole handle, as the row is in the list.
-            .cursor_grab()
+            .tooltip(Tooltip::text(tip));
+        let Some(geonameid) = marker.geonameid else {
+            return dot.into_any_element();
+        };
+        let label = self
+            .index
+            .city(geonameid)
+            .map(|city| self.index.label(city))
+            .unwrap_or_default();
+        // The dot is the whole handle, as the row is in the list.
+        dot.cursor_grab()
             .on_drag(DragRow { geonameid, label }, Self::drag_preview(cx))
             .when(dragging && self.drag == Some(geonameid), |dot| {
                 dot.opacity(0.4)
@@ -195,10 +238,41 @@ impl Elsewhere {
         &self,
         marker: &Marker,
         at: Point<Pixels>,
+        now: &Zoned,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let geonameid = marker.geonameid;
         let time = marker.time.clone();
+        let cell = |id: ElementId| {
+            div()
+                .id(id)
+                .text_xs()
+                .when_some(self.mono.clone(), Styled::font_family)
+                .when_some(
+                    self.pinned.as_ref().map(|pin| pin.accent().text),
+                    |cell, text| cell.text_color(rgb(text)),
+                )
+                .child(marker.time.clone())
+        };
+        let reading = match marker.geonameid {
+            None => cell(ElementId::from("map-time-here")).into_any_element(),
+            // Taller than the line, so it overhangs rather than moving the
+            // label.
+            Some(geonameid) => match &self.editing {
+                Some((editing, input)) if *editing == geonameid => {
+                    self.render_editor(input, cx).flex_none().into_any_element()
+                }
+                _ => cell(ElementId::from(("map-time", geonameid as usize)))
+                    .when(marker.known, |cell| {
+                        cell.cursor_pointer()
+                            .rounded_sm()
+                            .hover(|style| style.bg(rgb(theme::SURFACE0)))
+                            .on_click(cx.listener(move |this, _event, window, cx| {
+                                this.edit(geonameid, time.clone(), window, cx)
+                            }))
+                    })
+                    .into_any_element(),
+            },
+        };
         div()
             .absolute()
             .left(at.x)
@@ -214,39 +288,21 @@ impl Elsewhere {
                     .text_color(rgb(theme::SUBTEXT0))
                     .child(marker.name.clone()),
             )
-            .child(match &self.editing {
-                // Taller than the line, so it overhangs rather than moving
-                // the label.
-                Some((editing, input)) if *editing == geonameid => {
-                    self.render_editor(input, cx).flex_none().into_any_element()
-                }
-                _ => div()
-                    .id(("map-time", geonameid as usize))
-                    .text_xs()
-                    .when_some(self.mono.clone(), Styled::font_family)
-                    .when_some(
-                        self.pinned.as_ref().map(|pin| pin.accent().text),
-                        |cell, text| cell.text_color(rgb(text)),
-                    )
-                    .when(marker.known, |cell| {
-                        cell.cursor_pointer()
-                            .rounded_sm()
-                            .hover(|style| style.bg(rgb(theme::SURFACE0)))
-                            .on_click(cx.listener(move |this, _event, window, cx| {
-                                this.edit(geonameid, time.clone(), window, cx)
-                            }))
-                    })
-                    .child(marker.time.clone())
-                    .into_any_element(),
+            .when(marker.home, |label| {
+                label.child(self.here_tag("map-here", now))
             })
-            .children(
-                marker
-                    .day
-                    .clone()
-                    .map(|day| div().text_xs().text_color(rgb(theme::OVERLAY2)).child(day)),
-            )
+            .child(reading)
+            .children(marker.day.clone().map(tag))
             .into_any_element()
     }
+}
+
+fn centre(lon: f64, lat: f64, size: Size<Pixels>) -> Point<f32> {
+    let (x, y) = geo::project(LonLat { lon, lat });
+    point(
+        f32::from(size.width) * x as f32,
+        f32::from(size.height) * y as f32,
+    )
 }
 
 /// Labels are placed before layout, so the shaper is asked directly; a guess

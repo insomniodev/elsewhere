@@ -84,28 +84,75 @@ pub fn hour_label(hour: i8, minute: i8, format: Format) -> String {
 }
 
 /// "UTC", "+1", "−5", "+5:30" (U+2212 minus): the one notation for offsets
-/// everywhere. Callers pass the offset from UTC for now; UX-05 will switch the
-/// reference to here.
+/// everywhere. From UTC only for the map's nautical marks and here's own zone;
+/// everything else is from here, through `shift_label`.
 pub fn offset_label(offset: Offset) -> String {
-    let seconds = offset.seconds();
+    signed(offset.seconds()).unwrap_or_else(|| "UTC".to_string())
+}
+
+/// "+14", "−1", "±0": how far `zone` runs ahead of here, which is `at`'s
+/// zone, in `offset_label`'s notation.
+pub fn shift_label(zone: &TimeZone, at: &Zoned) -> String {
+    signed(shift(zone, at)).unwrap_or_else(|| "±0".to_string())
+}
+
+/// "14 hours ahead of here", "45 minutes behind here": `shift_label` spelled
+/// out for a tooltip, which has room to name the reference.
+pub fn shift_detail(zone: &TimeZone, at: &Zoned) -> String {
+    let seconds = shift(zone, at);
     if seconds == 0 {
-        return "UTC".to_string();
+        return "same time as here".to_string();
+    }
+    let side = if seconds < 0 { "behind" } else { "ahead of" };
+    let seconds = seconds.abs();
+    let (hours, minutes) = (seconds / 3600, (seconds % 3600) / 60);
+    let unit = |n: i32, one: &str| match n {
+        1 => format!("1 {one}"),
+        n => format!("{n} {one}s"),
+    };
+    let span = match (hours, minutes) {
+        (0, minutes) => unit(minutes, "minute"),
+        (hours, 0) => unit(hours, "hour"),
+        (hours, minutes) => format!("{} {}", unit(hours, "hour"), unit(minutes, "minute")),
+    };
+    format!("{span} {side} here")
+}
+
+/// Whether `zone` is here, `at`'s zone. By name where both have one, since a
+/// zone loaded from `TZ` and the same one looked up by name need not compare
+/// equal.
+pub fn is_here(zone: &TimeZone, at: &Zoned) -> bool {
+    match (zone.iana_name(), at.time_zone().iana_name()) {
+        (Some(zone), Some(here)) => zone == here,
+        _ => zone == at.time_zone(),
+    }
+}
+
+fn shift(zone: &TimeZone, at: &Zoned) -> i32 {
+    zone.to_offset(at.timestamp()).seconds() - at.offset().seconds()
+}
+
+/// `None` for zero, which each caller names its own way.
+fn signed(seconds: i32) -> Option<String> {
+    if seconds == 0 {
+        return None;
     }
     let sign = if seconds < 0 { '\u{2212}' } else { '+' };
     let seconds = seconds.abs();
     let hours = seconds / 3600;
     let minutes = (seconds % 3600) / 60;
-    if minutes == 0 {
+    Some(if minutes == 0 {
         format!("{sign}{hours}")
     } else {
         format!("{sign}{hours}:{minutes:02}")
-    }
+    })
 }
 
-/// "America/New_York · EDT · UTC−4 · daylight time"; the IANA name is left out
-/// for a zone without one. The offset is named from UTC, in `offset_label`'s
-/// notation. tzdb abbreviates many zones as a bare "-05", which is dropped
-/// rather than shown beside it.
+/// "America/New_York · EDT · 1 hour ahead of here · daylight time", where
+/// here is `at`'s zone; the IANA name is left out for a zone without one.
+/// Here's own zone has nothing to be ahead of, so it names its offset from
+/// UTC instead, in `offset_label`'s notation. tzdb abbreviates many zones as a
+/// bare "-05", which is dropped rather than shown beside it.
 pub fn zone_detail(zone: &TimeZone, at: &Zoned) -> String {
     let info = zone.to_offset_info(at.timestamp());
     let kind = if info.dst().is_dst() {
@@ -125,7 +172,10 @@ pub fn zone_detail(zone: &TimeZone, at: &Zoned) -> String {
     if !numeric && abbreviation != offset && Some(abbreviation) != name {
         parts.push(abbreviation);
     }
-    if Some(offset.as_str()) != name {
+    let shift = shift_detail(zone, at);
+    if !is_here(zone, at) {
+        parts.push(&shift);
+    } else if Some(offset.as_str()) != name {
         parts.push(&offset);
     }
     let tail = format!("{kind} time");
@@ -493,11 +543,48 @@ mod tests {
     }
 
     #[test]
-    fn heads_tooltips_and_marks_share_one_offset_notation() {
-        let now = at("2026-07-15T12:00:00Z", "UTC");
-        let head = offset_label(zone("America/Guayaquil").to_offset(now.timestamp()));
-        assert_eq!(head, "\u{2212}5");
-        assert!(zone_detail(&zone("America/Guayaquil"), &now).contains(&format!("UTC{head}")));
+    fn other_zones_are_named_from_here() {
+        let now = at("2026-07-15T12:00:00Z", "America/Guayaquil");
+        assert_eq!(
+            zone_detail(&zone("Asia/Kathmandu"), &now),
+            "Asia/Kathmandu · 10 hours 45 minutes ahead of here · standard time"
+        );
+        assert_eq!(
+            zone_detail(&zone("America/Los_Angeles"), &now),
+            "America/Los_Angeles · PDT · 2 hours behind here · daylight time"
+        );
+        // Level with here in July, but a different zone, so not here.
+        assert_eq!(
+            zone_detail(&zone("America/Chicago"), &now),
+            "America/Chicago · CDT · same time as here · daylight time"
+        );
+    }
+
+    #[test]
+    fn heads_read_hours_from_here() {
+        let now = at("2026-07-15T12:00:00Z", "America/Guayaquil");
+        assert_eq!(shift_label(&zone("Pacific/Kiritimati"), &now), "+19");
+        assert_eq!(shift_label(&zone("Asia/Kathmandu"), &now), "+10:45");
+        assert_eq!(shift_label(&zone("America/Los_Angeles"), &now), "\u{2212}2");
+        assert_eq!(shift_label(&zone("America/Guayaquil"), &now), "±0");
+        assert_eq!(
+            shift_detail(&zone("America/St_Johns"), &now),
+            "2 hours 30 minutes ahead of here"
+        );
+        assert_eq!(
+            shift_detail(
+                &zone("Asia/Tokyo"),
+                &at("2026-07-15T12:00:00Z", "Asia/Seoul")
+            ),
+            "same time as here"
+        );
+    }
+
+    #[test]
+    fn a_zone_loaded_by_name_is_here_when_the_names_match() {
+        let now = at("2026-07-15T12:00:00Z", "America/Guayaquil");
+        assert!(is_here(&zone("America/Guayaquil"), &now));
+        assert!(!is_here(&zone("America/Bogota"), &now));
     }
 
     #[test]

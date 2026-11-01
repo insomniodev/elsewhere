@@ -12,6 +12,7 @@ mod button;
 mod drag;
 mod footer;
 mod grid;
+mod here;
 mod map;
 mod notice;
 mod resize;
@@ -24,6 +25,7 @@ mod tooltip;
 use crate::cities;
 use crate::clock;
 use crate::geo;
+use crate::here::Here;
 use crate::land;
 use crate::saved;
 use crate::search::SearchIndex;
@@ -111,6 +113,8 @@ pub struct Elsewhere {
     /// Dropping it keeps the notice up.
     notice_timer: Option<Task<()>>,
     zones: clock::Zones,
+    /// What every view calls this machine's zone, refreshed each render.
+    here: Here,
     /// The row being dragged, by geonameid.
     drag: Option<u32>,
     // View preferences, kept in the settings file with the window's bounds.
@@ -175,6 +179,8 @@ impl Elsewhere {
             }
         }
 
+        let here = here::locate(&index, &saved, Zoned::now().time_zone().clone(), None);
+
         let bounds = cx.observe_window_bounds(window, |this, window, cx| {
             this.settings_settle = Some(cx.spawn_in(window, async move |this, cx| {
                 cx.background_executor().timer(BOUNDS_SETTLE).await;
@@ -203,6 +209,7 @@ impl Elsewhere {
             notice,
             notice_timer: None,
             zones,
+            here,
             drag: None,
             pinned: None,
             editing: None,
@@ -364,6 +371,7 @@ impl Render for Elsewhere {
             .pinned
             .as_ref()
             .map_or_else(Zoned::now, |pin| pin.at.clone());
+        self.refresh_here(&now);
         // Derived here so the stored order stays the hand-arranged one.
         let order: Vec<u32> = if self.westward {
             saved::westward(
@@ -404,31 +412,46 @@ impl Render for Elsewhere {
             // lets this flex child shrink below its content and overflow.
             .child(div().relative().flex_1().min_h_0().map(|region| {
                 match self.view {
-                    View::Map => {
-                        region.child(self.render_map(&self.saved, &now, dragging, window, cx))
+                    View::Map => region.child(self.render_map(
+                        &self.saved,
+                        &now,
+                        empty,
+                        dragging,
+                        window,
+                        cx,
+                    )),
+                    View::Grid => region.child(self.render_grid(&order, &now, empty, dragging, cx)),
+                    View::List => {
+                        // A saved city in the zone stands in for here's row.
+                        let here_row = self.here.city.is_none();
+                        region
+                            .child(
+                                div()
+                                    .id("saved")
+                                    .size_full()
+                                    .flex()
+                                    .flex_col()
+                                    .overflow_y_scroll()
+                                    .track_scroll(&self.saved_scroll)
+                                    .when(here_row, |list| list.child(self.render_here_row(&now)))
+                                    .when(empty, |list| list.child(self.render_empty()))
+                                    .children(order.iter().enumerate().filter_map(
+                                        |(i, geonameid)| {
+                                            let first = i == 0 && !here_row;
+                                            let last = i + 1 == order.len();
+                                            self.render_row(
+                                                *geonameid, &now, dragging, first, last, cx,
+                                            )
+                                        },
+                                    ))
+                                    .when(
+                                        !self.westward && dragging && self.drag.is_some(),
+                                        |list| list.child(self.render_drop_tail(cx)),
+                                    ),
+                            )
+                            // Hung out in the window padding, clear of the times.
+                            .child(scrollbar(&self.saved_scroll, Axis::Vertical, px(-6.)))
                     }
-                    View::Grid => region.child(self.render_grid(&order, &now, dragging, cx)),
-                    View::List => region
-                        .child(
-                            div()
-                                .id("saved")
-                                .size_full()
-                                .flex()
-                                .flex_col()
-                                .overflow_y_scroll()
-                                .track_scroll(&self.saved_scroll)
-                                .when(empty, |list| list.child(self.render_empty()))
-                                .children(order.iter().enumerate().filter_map(|(i, geonameid)| {
-                                    let first = i == 0;
-                                    let last = i + 1 == order.len();
-                                    self.render_row(*geonameid, &now, dragging, first, last, cx)
-                                }))
-                                .when(!self.westward && dragging && self.drag.is_some(), |list| {
-                                    list.child(self.render_drop_tail(cx))
-                                }),
-                        )
-                        // Hung out in the window padding, clear of the times.
-                        .child(scrollbar(&self.saved_scroll, Axis::Vertical, px(-6.))),
                 }
             }))
             .children(self.render_notice(cx))

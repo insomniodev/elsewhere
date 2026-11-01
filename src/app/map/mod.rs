@@ -9,6 +9,7 @@ use gpui::{
 use jiff::Zoned;
 
 use super::Elsewhere;
+use super::here::hint_over;
 use super::scrollbar::scrollbar;
 use crate::clock;
 use crate::geo::{self, LonLat};
@@ -62,6 +63,7 @@ impl Elsewhere {
         &self,
         saved: &[u32],
         now: &Zoned,
+        empty: bool,
         dragging: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -102,21 +104,17 @@ impl Elsewhere {
                     -SCROLLBAR_GAP,
                 ))
             })
+            .when(empty, |map| map.child(hint_over(div().inset_0())))
     }
 
-    /// Where the map centres when it first overflows: the reader's own city if
-    /// saved, else the first saved city, else Greenwich.
+    /// Where the map centres when it first overflows: here's marker, else the
+    /// first saved city, else Greenwich.
     fn focus(&self) -> f64 {
-        let now = Zoned::now();
-        let home = now.time_zone().iana_name();
-        let mut cities = self
-            .saved
-            .iter()
-            .filter_map(|geonameid| self.index.city(*geonameid));
-        cities
-            .clone()
-            .find(|city| Some(city.timezone.as_str()) == home)
-            .or_else(|| cities.next())
+        self.here
+            .place()
+            .into_iter()
+            .chain(self.saved.iter().copied())
+            .find_map(|geonameid| self.index.city(geonameid))
             .map_or(0.0, |city| city.longitude)
     }
 
