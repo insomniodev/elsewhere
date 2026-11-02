@@ -100,13 +100,13 @@ const VIEWS: [Segment; 3] = [
     },
 ];
 
-const WESTWARD: Toggle = Toggle {
-    id: "westward",
+const BY_CLOCK: Toggle = Toggle {
+    id: "by-clock",
     icon: "icons/milestone.svg",
     size: px(16.),
-    tips: ["order west to east", "ordered west to east"],
-    click: Elsewhere::toggle_westward,
-    on: |this| this.westward,
+    tips: ["order by clock", "ordered earliest to latest"],
+    click: Elsewhere::toggle_by_clock,
+    on: |this| this.by_clock,
     unavailable: |this| {
         if this.view == View::Map {
             Some("no order on a map")
@@ -116,7 +116,7 @@ const WESTWARD: Toggle = Toggle {
             None
         }
     },
-    focus: |focus| &focus.westward,
+    focus: |focus| &focus.by_clock,
 };
 
 impl Elsewhere {
@@ -152,7 +152,7 @@ impl Elsewhere {
         if self.view == View::Map {
             stops.push(self.focus.fit.clone());
         }
-        for toggle in [&FORMAT, &WESTWARD] {
+        for toggle in [&FORMAT, &BY_CLOCK] {
             if (toggle.unavailable)(self).is_none() {
                 stops.push((toggle.focus)(&self.focus).clone());
             }
@@ -160,8 +160,8 @@ impl Elsewhere {
         stops
     }
 
-    fn toggle_westward(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.westward = !self.westward;
+    fn toggle_by_clock(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.by_clock = !self.by_clock;
         self.persist_settings(window, cx);
         cx.notify();
     }
@@ -397,7 +397,7 @@ impl Elsewhere {
                     .flex_row()
                     .gap_1()
                     .child(self.render_toggle(&FORMAT, cx))
-                    .child(self.render_toggle(&WESTWARD, cx)),
+                    .child(self.render_toggle(&BY_CLOCK, cx)),
             )
     }
 }

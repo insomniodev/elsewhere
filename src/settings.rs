@@ -13,8 +13,8 @@ const HEADER: &str = "# elsewhere settings, one key = value per line";
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Settings {
     pub view: View,
-    /// Ordered by longitude rather than by hand.
-    pub westward: bool,
+    /// Ordered by UTC offset rather than by hand.
+    pub by_clock: bool,
     pub format: Format,
     /// The windowed size, kept while maximized.
     pub size: Option<Size<Pixels>>,
@@ -48,8 +48,8 @@ fn parse(text: &str) -> Settings {
                 _ => {}
             },
             "order" => match value {
-                "hand" => settings.westward = false,
-                "westward" => settings.westward = true,
+                "hand" => settings.by_clock = false,
+                "clock" => settings.by_clock = true,
                 _ => {}
             },
             "format" => match value {
@@ -80,11 +80,7 @@ fn render(settings: &Settings) -> String {
         View::Map => "map",
         View::Grid => "grid",
     };
-    let order = if settings.westward {
-        "westward"
-    } else {
-        "hand"
-    };
+    let order = if settings.by_clock { "clock" } else { "hand" };
     let format = match settings.format {
         Format::TwentyFour => "24",
         Format::Twelve => "12",
@@ -129,13 +125,13 @@ mod tests {
 
     #[test]
     fn parses_every_key() {
-        let text = "view = grid\norder = westward\nformat = 12\n\
+        let text = "view = grid\norder = clock\nformat = 12\n\
                     width = 472\nheight = 590\nx = -1200\ny = 40\n";
         assert_eq!(
             parse(text),
             Settings {
                 view: View::Grid,
-                westward: true,
+                by_clock: true,
                 format: Format::Twelve,
                 size: Some(size(px(472.), px(590.))),
                 origin: Some(point(px(-1200.), px(40.))),
@@ -176,7 +172,7 @@ mod tests {
     fn render_round_trips_through_parse() {
         let settings = Settings {
             view: View::Map,
-            westward: true,
+            by_clock: true,
             format: Format::Twelve,
             size: Some(size(px(472.), px(590.))),
             origin: Some(point(px(100.), px(-20.))),

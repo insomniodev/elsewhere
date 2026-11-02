@@ -18,7 +18,7 @@ pub(super) struct DragRow {
 
 impl DragRow {
     /// `reorders` where a drop between rows moves it: the list in the hand
-    /// order. Westward rows, the map's dots and the grid's heads only go to
+    /// order. By-clock rows, the map's dots and the grid's heads only go to
     /// the bin.
     pub(super) fn new(geonameid: u32, label: String, reorders: bool) -> Self {
         Self {

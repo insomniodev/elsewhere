@@ -153,8 +153,8 @@ pub struct Elsewhere {
     reveal_timer: Option<Task<()>>,
     // View preferences, kept in the settings file with the window's bounds.
     view: View,
-    /// Ordered by longitude rather than by hand.
-    westward: bool,
+    /// Ordered by UTC offset rather than by hand.
+    by_clock: bool,
     format: clock::Format,
     /// `None` follows the real clock.
     pinned: Option<Pin>,
@@ -251,7 +251,7 @@ impl Elsewhere {
             saved_unreadable,
             settings_unreadable,
             view: settings.view,
-            westward: settings.westward,
+            by_clock: settings.by_clock,
             format: settings.format,
             settings_written: settings,
             settings_settle: None,
@@ -319,7 +319,7 @@ impl Elsewhere {
         let bounds = window.window_bounds().get_bounds();
         let settings = Settings {
             view: self.view,
-            westward: self.westward,
+            by_clock: self.by_clock,
             format: self.format,
             size: Some(bounds.size),
             origin: Some(bounds.origin),
@@ -352,8 +352,8 @@ impl Elsewhere {
             }
             self.persist(cx);
         }
-        // New or already there, a pick shows where its row is: westward drops
-        // a new one wherever its longitude falls, and a saved one may be off
+        // New or already there, a pick shows where its row is: by clock drops
+        // a new one wherever its offset falls, and a saved one may be off
         // screen.
         self.reveal_row(geonameid, cx);
     }
@@ -394,15 +394,22 @@ impl Elsewhere {
     }
 
     /// The saved cities in the order every view but the map shows them.
-    /// Derived so the stored order stays the hand-arranged one.
+    /// Derived so the stored order stays the hand-arranged one. By clock goes
+    /// by each zone's offset at the shown instant, so DST moves a city as its
+    /// clock does; a zone tzdb lacks falls back to its solar offset.
     fn order(&self) -> Vec<u32> {
-        if self.westward {
-            saved::westward(
+        if self.by_clock {
+            let at = self.shown().timestamp();
+            saved::by_clock(
                 self.saved
                     .iter()
                     .filter_map(|geonameid| {
                         let city = self.index.city(*geonameid)?;
-                        Some((*geonameid, city.longitude))
+                        let offset = match self.zones.get(&city.timezone) {
+                            Some(zone) => zone.to_offset(at).seconds(),
+                            None => (city.longitude * 240.0) as i32,
+                        };
+                        Some((*geonameid, offset, city.longitude))
                     })
                     .collect(),
             )
@@ -579,7 +586,7 @@ impl Render for Elsewhere {
                                         },
                                     ))
                                     .when(
-                                        !self.westward && dragging && self.drag.is_some(),
+                                        !self.by_clock && dragging && self.drag.is_some(),
                                         |list| list.child(self.render_drop_tail(cx)),
                                     ),
                             )

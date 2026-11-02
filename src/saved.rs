@@ -168,11 +168,19 @@ pub fn reorder(saved: &mut Vec<u32>, dragged: u32, before: Option<u32>) -> bool 
     true
 }
 
-/// Westmost first. Stable, so shared longitudes keep their order; a NaN sorts
-/// as equal rather than panicking.
-pub fn westward(mut cities: Vec<(u32, f64)>) -> Vec<u32> {
-    cities.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-    cities.into_iter().map(|(geonameid, _)| geonameid).collect()
+/// Earliest clock first: by UTC offset in seconds, then by longitude within
+/// an offset, so a zone that reaches east of a later one still reads in clock
+/// order. Stable, so ties keep their order; a NaN longitude sorts as equal
+/// rather than panicking.
+pub fn by_clock(mut cities: Vec<(u32, i32, f64)>) -> Vec<u32> {
+    cities.sort_by(|a, b| {
+        a.1.cmp(&b.1)
+            .then_with(|| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
+    });
+    cities
+        .into_iter()
+        .map(|(geonameid, _, _)| geonameid)
+        .collect()
 }
 
 #[cfg(test)]
@@ -291,19 +299,26 @@ mod tests {
     }
 
     #[test]
-    fn orders_cities_west_to_east() {
+    fn orders_cities_by_offset_not_longitude() {
+        // Madrid lies west of London but keeps a later clock.
         let cities = vec![
-            (1850147, 139.69171),
-            (5128581, -74.006),
-            (2643743, -0.12574),
+            (3117735, 3600, -3.70256),
+            (2643743, 0, -0.12574),
+            (5128581, -5 * 3600, -74.006),
         ];
-        assert_eq!(westward(cities), [5128581, 2643743, 1850147]);
+        assert_eq!(by_clock(cities), [5128581, 2643743, 3117735]);
     }
 
     #[test]
-    fn equal_longitudes_keep_their_given_order() {
-        let cities = vec![(3, 10.0), (1, 10.0), (2, 10.0)];
-        assert_eq!(westward(cities), [3, 1, 2]);
+    fn a_shared_offset_reads_west_to_east() {
+        let cities = vec![(2, 3600, 13.405), (1, 3600, 2.3522), (3, 3600, 12.4964)];
+        assert_eq!(by_clock(cities), [1, 3, 2]);
+    }
+
+    #[test]
+    fn equal_keys_keep_their_given_order() {
+        let cities = vec![(3, 0, 10.0), (1, 0, 10.0), (2, 0, 10.0)];
+        assert_eq!(by_clock(cities), [3, 1, 2]);
     }
 
     #[test]

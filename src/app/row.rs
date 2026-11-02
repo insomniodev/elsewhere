@@ -123,7 +123,7 @@ impl Elsewhere {
     /// Ctrl+↑/↓ on a focused row: the keyboard's drag, so in the hand order
     /// only.
     fn shift(&mut self, geonameid: u32, up: bool, cx: &mut Context<Self>) {
-        if self.westward {
+        if self.by_clock {
             return;
         }
         let Some(at) = self.saved.iter().position(|id| *id == geonameid) else {
@@ -412,16 +412,16 @@ impl Elsewhere {
             None => (clock::UNKNOWN.to_string(), None),
         };
         // The rule above a row doubles as the insertion line, live only in the
-        // hand-arranged order; westward rows can still be dragged to the bin,
+        // hand-arranged order; by-clock rows can still be dragged to the bin,
         // but show no grab cursor, as a drop between rows moves nothing.
         // The first row wears it transparent, so a drop before it has a line
         // to show. No inset at the list's ends, with nothing to space from.
-        let target = drop_target(div(), !self.westward)
+        let target = drop_target(div(), !self.by_clock)
             .when(!first, |row| row.border_color(rgb(theme::SURFACE0)))
             .py(GAP)
             .when(first, |row| row.pt_0())
             .when(last, |row| row.pb_0())
-            .when(!self.westward, |row| {
+            .when(!self.by_clock, |row| {
                 row.on_drop(cx.listener(move |this, row: &DragRow, _window, cx| {
                     this.drop(row.geonameid, Some(geonameid), cx)
                 }))
@@ -464,9 +464,9 @@ impl Elsewhere {
                         row.bg(rgba(theme::WASH))
                     })
                     // The whole row is the handle; there is no grip.
-                    .when(!self.westward, |row| row.cursor_grab())
+                    .when(!self.by_clock, |row| row.cursor_grab())
                     .on_drag(
-                        DragRow::new(geonameid, label.clone(), !self.westward),
+                        DragRow::new(geonameid, label.clone(), !self.by_clock),
                         Self::drag_preview(cx),
                     )
                     .when(dragging && self.drag == Some(geonameid), |row| {

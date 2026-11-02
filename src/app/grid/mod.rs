@@ -192,7 +192,7 @@ impl Elsewhere {
     }
 
     /// Here's column first, while no saved city is in the zone to be it,
-    /// then the list's order, so the westward toggle reorders them too.
+    /// then the list's order, so the by-clock toggle reorders them too.
     fn grid_columns(&self, order: &[u32]) -> Vec<Column> {
         let here = self.here.city.is_none().then(|| Column {
             geonameid: None,
