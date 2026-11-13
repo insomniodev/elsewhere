@@ -1,9 +1,9 @@
-//! The one icon button the footer, the view switch, the bin and the title bar
+//! The one icon button the footer, the view switch, the rows and the title bar
 //! share, so they keep a box and a state vocabulary.
 
 use gpui::{
     AnyElement, AnyView, App, ClickEvent, Div, ElementId, FocusHandle, Pixels, Rgba, SharedString,
-    Stateful, Svg, Window, WindowControlArea, div, prelude::*, px, rgb, svg, transparent_black,
+    Stateful, Window, WindowControlArea, div, prelude::*, px, rgb, svg, transparent_black,
 };
 
 use super::focus::keyboard_only;
@@ -18,13 +18,6 @@ const DISABLED_OPACITY: f32 = 0.4;
 
 type Tooltip = Box<dyn Fn(&mut Window, &mut App) -> AnyView>;
 type Click = Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
-
-/// What a drag over the button restyles, for the type being dragged.
-#[derive(Clone, Copy)]
-struct Drop {
-    frame: fn(Stateful<Div>) -> Stateful<Div>,
-    icon: fn(Svg, &'static str) -> Svg,
-}
 
 /// What the button shows.
 enum Face {
@@ -48,11 +41,9 @@ pub(super) struct Button {
     rest: u32,
     hover: Option<u32>,
     wash: Rgba,
-    border: Option<u32>,
     on: bool,
     current: bool,
     disabled: bool,
-    drop: Option<Drop>,
     area: Option<WindowControlArea>,
     tooltip: Option<Tooltip>,
     click: Option<Click>,
@@ -77,11 +68,9 @@ impl Button {
             rest: theme::OVERLAY2,
             hover: None,
             wash: rgb(theme::SURFACE0),
-            border: None,
             on: false,
             current: false,
             disabled: false,
-            drop: None,
             area: None,
             tooltip: None,
             click: None,
@@ -113,12 +102,6 @@ impl Button {
         self
     }
 
-    /// A dashed frame, so it reads as a place to drop rather than a button.
-    pub(super) fn dashed(mut self, color: u32) -> Self {
-        self.border = Some(color);
-        self
-    }
-
     /// A switched-on toggle.
     pub(super) fn on(mut self, on: bool) -> Self {
         self.on = on;
@@ -133,23 +116,6 @@ impl Button {
 
     pub(super) fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
-        self
-    }
-
-    /// Lights up while a `T` is dragged over it.
-    pub(super) fn drop_target<T: 'static>(mut self) -> Self {
-        self.drop = Some(Drop {
-            frame: |frame| {
-                frame.drag_over::<T>(|style, _, _, _| {
-                    style
-                        .border_color(rgb(theme::BLUE))
-                        .bg(rgb(theme::SURFACE0))
-                })
-            },
-            icon: |icon, group| {
-                icon.group_drag_over::<T>(group, |style| style.text_color(rgb(theme::BLUE)))
-            },
-        });
         self
     }
 
@@ -181,7 +147,7 @@ impl Button {
         self
     }
 
-    /// A div, for the caller to hang what is its own (a drop handler) on.
+    /// A div, for the caller to hang what is its own (a size, a hover) on.
     pub(super) fn build(self) -> Stateful<Div> {
         let Self {
             id,
@@ -190,11 +156,9 @@ impl Button {
             rest,
             hover,
             wash,
-            border,
             on,
             current,
             disabled,
-            drop,
             area,
             tooltip,
             click,
@@ -212,9 +176,6 @@ impl Button {
                     .text_color(rgb(color));
                 if let (Some(hover), true) = (hover, live) {
                     icon = icon.group_hover(group, move |style| style.text_color(rgb(hover)));
-                }
-                if let Some(drop) = drop {
-                    icon = (drop.icon)(icon, group);
                 }
                 icon.into_any_element()
             }
@@ -235,11 +196,9 @@ impl Button {
             .items_center()
             .justify_center()
             .rounded_md()
-            // Always drawn, so the icon sits in the same box with or without
-            // a frame, and a focus ring has room.
+            // Always drawn, so a focus ring has room.
             .border_1()
-            .border_color(border.map_or_else(transparent_black, |color| rgb(color).into()))
-            .when(border.is_some(), |button| button.border_dashed())
+            .border_color(transparent_black())
             .when(current, |button| button.bg(rgb(theme::SURFACE0)))
             .when(live && click.is_some(), |button| button.cursor_pointer())
             .when(live && (click.is_some() || area.is_some()), |button| {
@@ -261,9 +220,6 @@ impl Button {
         }
         if let (Some(click), true) = (click, live) {
             button = button.on_click(click);
-        }
-        if let Some(drop) = drop {
-            button = (drop.frame)(button);
         }
         button.child(face)
     }

@@ -11,26 +11,6 @@ use crate::theme;
 pub(super) struct DragRow {
     pub(super) geonameid: u32,
     pub(super) label: String,
-    /// Where it can land, so a drag that cannot reorder does not look as if
-    /// it could.
-    hint: &'static str,
-}
-
-impl DragRow {
-    /// `reorders` where a drop between rows moves it: the list in the hand
-    /// order. By-clock rows, the map's dots and the grid's heads only go to
-    /// the bin.
-    pub(super) fn new(geonameid: u32, label: String, reorders: bool) -> Self {
-        Self {
-            geonameid,
-            label,
-            hint: if reorders {
-                "move or drop on the bin"
-            } else {
-                "drop on the bin to remove"
-            },
-        }
-    }
 }
 
 impl Render for DragRow {
@@ -44,12 +24,6 @@ impl Render for DragRow {
             .opacity(0.9)
             .shadow_md()
             .child(self.label.clone())
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(rgb(theme::OVERLAY2))
-                    .child(self.hint),
-            )
     }
 }
 
@@ -67,8 +41,7 @@ pub(super) fn drop_target(element: Div, open: bool) -> Div {
 
 impl Elsewhere {
     /// Runs once a drag actually starts, noting the row in flight so the next
-    /// frame shows the bin. Shared by the list's rows, the map's dots and the
-    /// grid's heads.
+    /// frame dims it and opens the drop tail.
     pub(super) fn drag_preview(
         cx: &mut Context<Self>,
     ) -> impl Fn(&DragRow, Point<Pixels>, &mut Window, &mut App) -> Entity<DragRow> + 'static {

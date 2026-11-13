@@ -145,6 +145,8 @@ pub struct Elsewhere {
     here: Here,
     /// The row being dragged, by geonameid.
     drag: Option<u32>,
+    /// The row under the pointer, which shows its remove button.
+    hovered: Option<u32>,
     /// The row washed to show where it is, until `reveal_timer` clears it.
     revealed: Option<u32>,
     /// Whether the list still has to scroll to `revealed`, which it can only
@@ -261,6 +263,7 @@ impl Elsewhere {
             zones,
             here,
             drag: None,
+            hovered: None,
             revealed: None,
             reveal_pending: false,
             reveal_timer: None,
@@ -555,15 +558,10 @@ impl Render for Elsewhere {
             // lets this flex child shrink below its content and overflow.
             .child(div().relative().flex_1().min_h_0().map(|region| {
                 match self.view {
-                    View::Map => region.child(self.render_map(
-                        &self.saved,
-                        &now,
-                        empty,
-                        dragging,
-                        window,
-                        cx,
-                    )),
-                    View::Grid => region.child(self.render_grid(&order, &now, empty, dragging, cx)),
+                    View::Map => {
+                        region.child(self.render_map(&self.saved, &now, empty, window, cx))
+                    }
+                    View::Grid => region.child(self.render_grid(&order, &now, empty, cx)),
                     View::List => {
                         region
                             .child(
@@ -601,7 +599,7 @@ impl Render for Elsewhere {
                 }
             }))
             .children(self.render_notice(cx))
-            .child(self.render_footer(dragging, cx))
+            .child(self.render_footer(cx))
             // Last, so they lie over everything else.
             .children(resize::handles(window))
     }

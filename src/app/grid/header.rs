@@ -1,13 +1,12 @@
-//! A head's name is its drag handle, as the map's dot is, though without a
-//! grab cursor: the bin is its only drop target. Set flush right over the
-//! labels, as a calendar sets its zone names.
+//! Set flush right over the labels, as a calendar sets its zone names. A
+//! saved city's head shows its remove button while hovered, on the offset's
+//! line, where there is room for it.
 
 use gpui::{Context, Pixels, Styled, div, prelude::*, px, rgb};
 use jiff::Zoned;
 
 use super::{COLUMN, Column, INSET, LABEL};
 use crate::app::Elsewhere;
-use crate::app::drag::DragRow;
 use crate::app::tooltip::Tooltip;
 use crate::clock;
 use crate::theme;
@@ -21,18 +20,20 @@ pub(super) const DATE: Pixels = px(18.);
 /// the date line.
 pub(super) const HEAD: Pixels = px(58.);
 
+/// What a head's remove button shows on the hover of.
+const HEAD_GROUP: &str = "head";
+
 impl Elsewhere {
     pub(super) fn render_heads(
         &self,
         columns: &[Column],
         now: &Zoned,
-        dragging: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         div().flex_none().h(HEAD).flex().flex_row().children(
             columns
                 .iter()
-                .map(|column| self.render_head(column, now, dragging, cx)),
+                .map(|column| self.render_head(column, now, cx)),
         )
     }
 
@@ -43,7 +44,6 @@ impl Elsewhere {
         &self,
         column: &Column,
         now: &Zoned,
-        dragging: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let here = column.geonameid.is_none() || column.geonameid == self.here.city;
@@ -63,6 +63,7 @@ impl Elsewhere {
         }
         .map(|line| shortened(div()).child(line));
         let head = div()
+            .group(HEAD_GROUP)
             .flex_1()
             .min_w(COLUMN)
             .pr(INSET)
@@ -89,13 +90,6 @@ impl Elsewhere {
             shortened(div().id(("head", geonameid as usize)))
                 .text_color(rgb(theme::SUBTEXT0))
                 .tooltip(Tooltip::text(tip))
-                .on_drag(
-                    DragRow::new(geonameid, label, false),
-                    Self::drag_preview(cx),
-                )
-                .when(dragging && self.drag == Some(geonameid), |name| {
-                    name.opacity(0.4)
-                })
                 // As the list's row is washed, for a city just picked or
                 // restored.
                 .when(self.revealed == Some(geonameid), |name| {
@@ -103,7 +97,16 @@ impl Elsewhere {
                 })
                 .child(city.name.clone()),
         )
-        .children(offset)
+        .child(
+            div()
+                .flex()
+                .flex_row()
+                .justify_end()
+                .items_center()
+                .gap_1()
+                .child(self.render_remove_small(geonameid, HEAD_GROUP, cx))
+                .children(offset),
+        )
     }
 }
 

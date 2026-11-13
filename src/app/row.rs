@@ -1,12 +1,13 @@
 use std::time::Duration;
 
 use gpui::{
-    App, Context, Div, ElementId, Entity, EntityInputHandler, Focusable, Pixels, SharedString,
-    Window, deferred, div, prelude::*, px, rgb, rgba,
+    AnimationExt, App, Context, Div, ElementId, Entity, EntityInputHandler, Focusable,
+    HoverListenerMode, Pixels, SharedString, SpringAnimation, SpringConfig, Stateful, Window,
+    deferred, div, prelude::*, px, rgb, rgba,
 };
 use jiff::Zoned;
 
-use super::button::{self, Button};
+use super::button::Button;
 use super::drag::{DragRow, drop_target};
 use super::focus::{keyboard_only, ring};
 use super::here::{hint, tag};
@@ -34,6 +35,21 @@ const TIME_HEIGHT: Pixels = px(36.);
 /// into the window padding: the list is a scroll container and clips on both
 /// axes, which would square off the row's left corners.
 const WASH: Pixels = px(8.);
+
+/// The time's inset from the row's right edge, which with the vendored
+/// input's 6px makes the digits' inset the label's.
+const EDGE: Pixels = px(2.);
+
+/// The remove button's room once slid open: the button and the row's gap.
+const REMOVE: Pixels = px(36.);
+
+/// The remove button's side where it rides a line of small text: a map
+/// label, a grid head.
+pub(super) const REMOVE_SMALL: Pixels = px(16.);
+
+/// Critically damped, so the slide eases out without a bounce, and settles
+/// in about 120ms.
+const SLIDE: SpringConfig = SpringConfig::new(1600., 80., 1.);
 
 /// Either side of the rule between rows.
 const GAP: Pixels = px(6.);
@@ -76,6 +92,10 @@ impl Elsewhere {
             return;
         };
         self.saved.remove(at);
+        // Its row is gone before the pointer can be seen to leave it.
+        if self.hovered == Some(geonameid) {
+            self.hovered = None;
+        }
         if let Some(pin) = &mut self.pinned {
             pin.forget(geonameid);
         }
@@ -329,6 +349,7 @@ impl Elsewhere {
                 .items_center()
                 .gap_2()
                 .pl(WASH)
+                .pr(EDGE)
                 .child(self.render_name(
                     "name-here".into(),
                     self.here.name.clone(),
@@ -350,9 +371,7 @@ impl Elsewhere {
                             |cell, text| cell.text_color(rgb(text)),
                         )
                         .child(time),
-                )
-                // The remove button's room, so the times line up.
-                .child(div().flex_none().w(button::WIDTH)),
+                ),
         )
     }
 
@@ -412,8 +431,8 @@ impl Elsewhere {
             None => (clock::UNKNOWN.to_string(), None),
         };
         // The rule above a row doubles as the insertion line, live only in the
-        // hand-arranged order; by-clock rows can still be dragged to the bin,
-        // but show no grab cursor, as a drop between rows moves nothing.
+        // hand-arranged order; by-clock rows do not drag, as a drop between
+        // them would move nothing.
         // The first row wears it transparent, so a drop before it has a line
         // to show. No inset at the list's ends, with nothing to space from.
         let target = drop_target(div(), !self.by_clock)
@@ -454,21 +473,36 @@ impl Elsewhere {
                     .items_center()
                     .group("row")
                     .pl(WASH)
+                    .pr(EDGE)
                     .rounded_md()
                     // Not a click target: the wash shows the row is live for
                     // its remove button and as a drag handle, so only the time
                     // and the button take a pointer cursor. The name's tooltip
                     // says what the row is.
                     .hover(|style| style.bg(rgba(theme::WASH)))
+                    // As the wash does, which a key press does not lift.
+                    .hover_listener_mode(HoverListenerMode::InputModalityIndependent)
+                    .on_hover(cx.listener(move |this, hovered: &bool, _window, cx| {
+                        if *hovered {
+                            this.hovered = Some(geonameid);
+                        } else if this.hovered == Some(geonameid) {
+                            this.hovered = None;
+                        }
+                        cx.notify();
+                    }))
                     .when(self.revealed == Some(geonameid), |row| {
                         row.bg(rgba(theme::WASH))
                     })
                     // The whole row is the handle; there is no grip.
-                    .when(!self.by_clock, |row| row.cursor_grab())
-                    .on_drag(
-                        DragRow::new(geonameid, label.clone(), !self.by_clock),
-                        Self::drag_preview(cx),
-                    )
+                    .when(!self.by_clock, |row| {
+                        row.cursor_grab().on_drag(
+                            DragRow {
+                                geonameid,
+                                label: label.clone(),
+                            },
+                            Self::drag_preview(cx),
+                        )
+                    })
                     .when(dragging && self.drag == Some(geonameid), |row| {
                         row.opacity(0.4)
                     })
@@ -483,64 +517,120 @@ impl Elsewhere {
                         now,
                     ))
                     .children(day.map(tag))
-                    .child(match &self.editing {
-                        Some((editing, input)) if *editing == geonameid => {
-                            self.render_editor(input, cx).into_any_element()
-                        }
-                        // The cell is fixed so the column lines up; the pill
-                        // hugs the digits so the hover wash sits under them, at
-                        // the full height the editor opens into.
-                        _ => div()
-                            .w(time_width(self.format))
-                            .h(TIME_HEIGHT)
+                    // One box with no gap, so a closed remove button leaves
+                    // none behind.
+                    .child(
+                        div()
+                            .flex_none()
                             .flex()
-                            .justify_end()
-                            .child(
-                                div()
-                                    .id(("time", geonameid as usize))
-                                    .h_full()
+                            .flex_row()
+                            .items_center()
+                            .child(match &self.editing {
+                                Some((editing, input)) if *editing == geonameid => {
+                                    self.render_editor(input, cx).into_any_element()
+                                }
+                                // The cell is fixed so the column lines up; the pill
+                                // hugs the digits so the hover wash sits under them, at
+                                // the full height the editor opens into.
+                                _ => div()
+                                    .w(time_width(self.format))
+                                    .h(TIME_HEIGHT)
                                     .flex()
-                                    .items_center()
-                                    // The vendored input's inset, so the digits
-                                    // hold still when the editor opens.
-                                    .px(px(6.))
-                                    .rounded_md()
-                                    .when_some(self.mono.clone(), Styled::font_family)
-                                    .when_some(
-                                        self.pinned.as_ref().map(|pin| pin.accent().text),
-                                        |cell, text| cell.text_color(rgb(text)),
+                                    .justify_end()
+                                    .child(
+                                        div()
+                                            .id(("time", geonameid as usize))
+                                            .h_full()
+                                            .flex()
+                                            .items_center()
+                                            // The vendored input's inset, so the digits
+                                            // hold still when the editor opens.
+                                            .px(px(6.))
+                                            .rounded_md()
+                                            .when_some(self.mono.clone(), Styled::font_family)
+                                            .when_some(
+                                                self.pinned.as_ref().map(|pin| pin.accent().text),
+                                                |cell, text| cell.text_color(rgb(text)),
+                                            )
+                                            .when(known, |cell| {
+                                                cell.cursor_pointer()
+                                                    .hover(|style| style.bg(rgb(theme::SURFACE0)))
+                                                    .on_click(cx.listener({
+                                                        let time = time.clone();
+                                                        move |this, _event, window, cx| {
+                                                            this.edit(
+                                                                geonameid,
+                                                                time.clone(),
+                                                                window,
+                                                                cx,
+                                                            )
+                                                        }
+                                                    }))
+                                            })
+                                            .child(time.clone()),
                                     )
-                                    .when(known, |cell| {
-                                        cell.cursor_pointer()
-                                            .hover(|style| style.bg(rgb(theme::SURFACE0)))
-                                            .on_click(cx.listener({
-                                                let time = time.clone();
-                                                move |this, _event, window, cx| {
-                                                    this.edit(geonameid, time.clone(), window, cx)
-                                                }
-                                            }))
-                                    })
-                                    .child(time.clone()),
-                            )
-                            .into_any_element(),
-                    })
-                    .child(self.render_remove(geonameid, focused, cx))
+                                    .into_any_element(),
+                            })
+                            .child(self.render_remove(
+                                geonameid,
+                                focused || self.hovered == Some(geonameid),
+                                cx,
+                            )),
+                    )
                     .when(focused, |row| row.child(ring())),
             ),
         )
     }
 
-    /// Shown only while the row is hovered or focused, but always laid out,
-    /// so the times hold still. Invisible rather than absent, it is only
-    /// ever clicked with the row under the pointer, which shows it. Focused,
-    /// it says what Delete does.
+    /// Takes no room until the row is hovered or focused, then slides open
+    /// from the right edge, pushing the time over, so the times sit flush at
+    /// rest. Shut, it clips the button away, so it is only ever clicked with
+    /// the row under the pointer. Focused, it says what Delete does.
     fn render_remove(
         &self,
         geonameid: u32,
-        focused: bool,
+        shown: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        Button::new("remove", "icons/x.svg", px(12.))
+        div()
+            .flex_none()
+            .flex()
+            .justify_end()
+            .overflow_hidden()
+            .child(
+                Button::new("remove", "icons/x.svg", px(12.))
+                    .key(geonameid as usize)
+                    .rest(theme::SUBTEXT0)
+                    .hover(theme::RED)
+                    .tooltip(Tooltip::text("remove"))
+                    .on_click(cx.listener(move |this, _event, window, cx| {
+                        this.delete(geonameid, window, cx)
+                    }))
+                    .build()
+                    .flex_none()
+                    // The time's, so the two hover washes match.
+                    .h(TIME_HEIGHT),
+            )
+            // A row new to the list starts at rest rather than sliding shut.
+            .with_spring(
+                ("remove-slide", geonameid as usize),
+                SpringAnimation::new(SLIDE)
+                    .to(if shown { REMOVE } else { px(0.) })
+                    .with_epsilon(0.5),
+                |slot, width| slot.w(width).opacity((width / REMOVE).clamp(0., 1.)),
+            )
+    }
+
+    /// For the map's labels and the grid's heads. Shown only while `group`
+    /// is hovered, which has to contain it, so it is only ever clicked in
+    /// sight; a focused dot has Delete instead.
+    pub(super) fn render_remove_small(
+        &self,
+        geonameid: u32,
+        group: &'static str,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        Button::new("remove", "icons/x.svg", px(8.))
             .key(geonameid as usize)
             .rest(theme::SUBTEXT0)
             .hover(theme::RED)
@@ -550,7 +640,9 @@ impl Elsewhere {
             )
             .build()
             .flex_none()
-            .opacity(if focused { 1. } else { 0. })
-            .group_hover("row", |style| style.opacity(1.))
+            .w(REMOVE_SMALL)
+            .h(REMOVE_SMALL)
+            .opacity(0.)
+            .group_hover(group, |style| style.opacity(1.))
     }
 }

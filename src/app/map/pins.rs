@@ -1,5 +1,5 @@
 //! The cities' dots and labels are divs rather than canvas paint, so they
-//! hover, click and drag like the list's rows do.
+//! hover and click like the list's rows do.
 
 use gpui::{
     AnyElement, Context, ElementId, Font, MouseButton, Pixels, Point, SharedString, Size, TextRun,
@@ -8,9 +8,9 @@ use gpui::{
 use jiff::Zoned;
 
 use super::labels;
-use crate::app::drag::DragRow;
 use crate::app::focus::keyboard_only;
 use crate::app::here::tag;
+use crate::app::row::REMOVE_SMALL;
 use crate::app::tooltip::Tooltip;
 use crate::app::{Elsewhere, Remove};
 use crate::clock;
@@ -28,9 +28,12 @@ const LABEL_GAP: f32 = 3.0;
 
 const PART_GAP: Pixels = px(4.);
 
+/// What a label's remove button shows on the hover of.
+const LABEL_GROUP: &str = "map-label";
+
 struct Marker {
-    /// `None` for here's own marker, which is not a saved city: it neither
-    /// drags nor opens the editor.
+    /// `None` for here's own marker, which is not a saved city: it is neither
+    /// removed nor opens the editor.
     geonameid: Option<u32>,
     /// In the map rect's own coordinates.
     centre: Point<f32>,
@@ -53,7 +56,6 @@ impl Elsewhere {
         &self,
         saved: &[u32],
         now: &Zoned,
-        dragging: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
@@ -83,6 +85,9 @@ impl Elsewhere {
                 elements.push(self.render_label(
                     marker,
                     origin + point(px(slot.x), px(slot.y)),
+                    // Or where the end would leave what the viewport shows.
+                    slot.x + slot.w < marker.centre.x
+                        || slot.x + slot.w + f32::from(REMOVE_SMALL + PART_GAP) > frame.x + frame.w,
                     now,
                     cx,
                 ));
@@ -90,7 +95,7 @@ impl Elsewhere {
         }
         for (marker, slot) in markers.iter().zip(&slots) {
             let centre = origin + point(px(marker.centre.x), px(marker.centre.y));
-            elements.push(self.render_dot(marker, centre, slot.is_none(), dragging, cx));
+            elements.push(self.render_dot(marker, centre, slot.is_none(), cx));
         }
         elements
     }
@@ -185,13 +190,12 @@ impl Elsewhere {
 
     /// Hollow for here, since that is the reader's place rather than an
     /// elsewhere. The dot is drawn in the middle of a larger, invisible hit
-    /// square that hovers, clicks and drags for it.
+    /// square that hovers and clicks for it.
     fn render_dot(
         &self,
         marker: &Marker,
         centre: Point<Pixels>,
         unlabelled: bool,
-        dragging: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         // Without a label, the tooltip is the only place to read the time.
@@ -235,24 +239,17 @@ impl Elsewhere {
                     )
                     .group_hover("dot", |style| style.bg(rgb(theme::TEXT))),
             );
-        // Here's marker neither drags nor edits, so a press on it pans.
+        // Here's marker does not edit, so a press on it pans.
         let Some(geonameid) = marker.geonameid else {
             return dot.into_any_element();
         };
-        let label = self
-            .index
-            .city(geonameid)
-            .map(|city| self.index.label(city))
-            .unwrap_or_default();
         let time = marker.time.clone();
         let Some(focus) = self.focus.row(geonameid).cloned() else {
             return dot.into_any_element();
         };
         let focused = self.focus.on(&focus);
-        // The dot is the whole handle, as the row is in the list, and opens
-        // the editor its label's time does, where there is a label to hold it.
-        // No grab cursor: the bin is its only drop target, which reorders
-        // nothing, so the drag is an extra beside the list's remove button.
+        // The dot opens the editor its label's time does, where there is a
+        // label to hold it; the label carries the remove button.
         // A stop in the tab order with its row's keys, but for moving: the
         // map has no order to move it in. Ringed rather than lit, so focus
         // and a hover read apart.
@@ -274,21 +271,20 @@ impl Elsewhere {
                         this.edit(geonameid, time.clone(), window, cx)
                     }))
             })
-            .on_drag(
-                DragRow::new(geonameid, label, false),
-                Self::drag_preview(cx),
-            )
-            .when(dragging && self.drag == Some(geonameid), |dot| {
-                dot.opacity(0.4)
-            })
             .into_any_element()
     }
 
-    /// The time opens the same what-if editor a row's does.
+    /// The time opens the same what-if editor a row's does. A saved city's
+    /// label shows its remove button while hovered, at the end away from the
+    /// dot: the start when `leading`, the label lying left of its dot or hard
+    /// against the viewport's right edge. The
+    /// button is no part of the label's placement, so it may lie over a
+    /// neighbour for as long as the hover lasts.
     fn render_label(
         &self,
         marker: &Marker,
         at: Point<Pixels>,
+        leading: bool,
         now: &Zoned,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -332,15 +328,34 @@ impl Elsewhere {
                     .into_any_element(),
             },
         };
+        // A press on it removes rather than pans.
+        let remove = marker.geonameid.map(|geonameid| {
+            self.render_remove_small(geonameid, LABEL_GROUP, cx)
+                .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
+                    cx.stop_propagation()
+                })
+        });
+        let (before, after) = if leading {
+            (remove, None)
+        } else {
+            (None, remove)
+        };
+        let inset = if before.is_some() {
+            REMOVE_SMALL + PART_GAP
+        } else {
+            px(0.)
+        };
         div()
+            .group(LABEL_GROUP)
             .absolute()
-            .left(at.x)
+            .left(at.x - inset)
             .top(at.y)
             .h(px(LABEL_HEIGHT))
             .flex()
             .flex_row()
             .items_center()
             .gap(PART_GAP)
+            .children(before)
             .child(
                 div()
                     .id(match marker.geonameid {
@@ -357,6 +372,7 @@ impl Elsewhere {
             })
             .child(reading)
             .children(marker.day.clone().map(tag))
+            .children(after)
             .into_any_element()
     }
 }

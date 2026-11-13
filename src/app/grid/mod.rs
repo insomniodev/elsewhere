@@ -97,7 +97,6 @@ impl Elsewhere {
         order: &[u32],
         now: &Zoned,
         empty: bool,
-        dragging: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let day = hours::Day::of(now);
@@ -143,7 +142,7 @@ impl Elsewhere {
                             .when(!alone, |content| content.min_w_full())
                             .flex()
                             .flex_col()
-                            .child(self.render_heads(&columns, now, dragging, cx))
+                            .child(self.render_heads(&columns, now, cx))
                             .child(
                                 div()
                                     .id("grid-hours")

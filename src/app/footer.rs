@@ -6,7 +6,6 @@ use jiff::Zoned;
 use jiff::tz::TimeZone;
 
 use super::button::Button;
-use super::drag::DragRow;
 use super::focus::{Focus, keyboard_only};
 use super::tooltip::Tooltip;
 use super::{Elsewhere, View};
@@ -202,8 +201,7 @@ impl Elsewhere {
             .build()
     }
 
-    /// Each segment keeps the toggles' box, so the icons line up with the bin
-    /// beside them.
+    /// Each segment keeps the toggles' box, so the icons line up.
     fn render_switch(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
@@ -359,22 +357,9 @@ impl Elsewhere {
         )
     }
 
-    fn render_bin(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        Button::new("bin", "icons/trash.svg", px(14.))
-            .rest(theme::SUBTEXT0)
-            .dashed(theme::OVERLAY2)
-            .drop_target::<DragRow>()
-            .build()
-            .on_drop(
-                cx.listener(|this, row: &DragRow, window, cx| {
-                    this.delete(row.geonameid, window, cx)
-                }),
-            )
-    }
-
     /// Always there at a fixed height, so the list above never shifts as
     /// controls come and go.
-    pub(super) fn render_footer(&self, dragging: bool, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_footer(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
             .flex_row()
@@ -388,8 +373,7 @@ impl Elsewhere {
                     .flex_row()
                     .gap_1()
                     .child(self.render_switch(cx))
-                    .child(self.render_fit(cx))
-                    .children((dragging && self.drag.is_some()).then(|| self.render_bin(cx))),
+                    .child(self.render_fit(cx)),
             )
             .child(
                 div()

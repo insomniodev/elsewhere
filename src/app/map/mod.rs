@@ -98,7 +98,6 @@ impl Elsewhere {
         saved: &[u32],
         now: &Zoned,
         empty: bool,
-        dragging: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
@@ -147,7 +146,7 @@ impl Elsewhere {
                             .min_w_full()
                             .when_some(layout, |content, layout| content.w(layout.rect.size.width))
                             .child(self.render_world(now))
-                            .children(self.render_pins(saved, now, dragging, window, cx)),
+                            .children(self.render_pins(saved, now, window, cx)),
                     ),
             )
             .child(pan(self.map_pan.clone(), self.map_scroll.clone()))
