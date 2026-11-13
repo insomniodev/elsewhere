@@ -1,0 +1,2 @@
+// gpui loads the window icon from resource id 1.
+1 ICON "elsewhere.ico"

@@ -1,11 +1,13 @@
 [package]
 name = "elsewhere"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 rust-version = "1.100"
 description = "Check the time in other places"
 license = "MIT"
 repository = "https://github.com/insomniodev/elsewhere"
+# Git dependencies keep it off crates.io; releases ship on GitHub.
+publish = false
 
 [dependencies]
 # gpui has had no crates.io release since 0.2.2; this tracks Zed's main.
@@ -13,6 +15,10 @@ gpui = { git = "https://github.com/zed-industries/zed", rev = "27bbbc1cc480a7500
 gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "27bbbc1cc480a7500cec122f120e796d1fb8500c", features = ["font-kit", "wayland", "x11"] }
 jiff = "0.2"
 unicode-segmentation = "1"
+
+# Embeds the app icon in the .exe (build.rs).
+[target.'cfg(windows)'.build-dependencies]
+embed-resource = "3"
 
 # The dataset generators are dev tools, kept out of `cargo install`.
 [features]

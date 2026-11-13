@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=elsewhere
+Comment=Check the time in other places
+Exec=elsewhere
+Icon=io.github.insomniodev.elsewhere
+Terminal=false
+Categories=Utility;Clock;
+Keywords=time;timezone;clock;world;city;
+StartupWMClass=io.github.insomniodev.elsewhere

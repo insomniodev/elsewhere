@@ -1,6 +1,33 @@
 # elsewhere
 Check the time in other places.
 
+<p>
+  <img src="docs/map.png" alt="The map view, with cities pinned and the night side shaded" width="600">
+  <img src="docs/list.png" alt="The list view" width="220">
+</p>
+
+## Install
+
+Download the latest build from
+[Releases](https://github.com/insomniodev/elsewhere/releases).
+
+**Linux** (x86_64): unpack into `~/.local` to get the app, its launcher entry
+and icon:
+
+```sh
+tar -xzf elsewhere-*-x86_64-unknown-linux-gnu.tar.gz -C ~/.local --strip-components=1
+```
+
+**Windows** (x86_64): unzip anywhere and run `elsewhere.exe`.
+
+**From source** (any platform gpui supports):
+
+```sh
+cargo install --locked --git https://github.com/insomniodev/elsewhere
+```
+
+macOS builds are not published yet, as they are untested.
+
 ## Shortcuts
 
 | Key | Action |

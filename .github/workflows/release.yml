@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  licenses:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about
+      - run: cargo about generate about.hbs -o dependency_licenses.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: licenses
+          path: dependency_licenses.md
+
+  build:
+    needs: licenses
+    strategy:
+      matrix:
+        include:
+          # The oldest supported runner, for the widest glibc reach.
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux build deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev \
+            libwayland-dev libx11-xcb-dev libxcb1-dev libfreetype-dev \
+            libfontconfig-dev libvulkan-dev
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: licenses
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          name=elsewhere-${GITHUB_REF_NAME}-${{ matrix.target }}
+          id=io.github.insomniodev.elsewhere
+          mkdir -p $name/bin $name/share/applications \
+            $name/share/icons/hicolor/scalable/apps $name/share/doc/elsewhere
+          cp target/${{ matrix.target }}/release/elsewhere $name/bin/
+          cp assets/app/$id.desktop $name/share/applications/
+          cp assets/app/$id.svg $name/share/icons/hicolor/scalable/apps/
+          cp readme.md license.md third_party_licenses.md dependency_licenses.md \
+            $name/share/doc/elsewhere/
+          tar -czf $name.tar.gz $name
+          sha256sum $name.tar.gz > $name.tar.gz.sha256
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $name = "elsewhere-$env:GITHUB_REF_NAME-${{ matrix.target }}"
+          New-Item -ItemType Directory $name | Out-Null
+          Copy-Item target/${{ matrix.target }}/release/elsewhere.exe, readme.md, `
+            license.md, third_party_licenses.md, dependency_licenses.md $name
+          Compress-Archive $name "$name.zip"
+          $hash = (Get-FileHash "$name.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $name.zip" | Out-File -Encoding ascii "$name.zip.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            elsewhere-*.tar.gz*
+            elsewhere-*.zip*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      # A draft, so the notes can be written and the assets checked before
+      # it goes out.
+      - run: gh release create "$GITHUB_REF_NAME" dist/* --draft --verify-tag --title "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}

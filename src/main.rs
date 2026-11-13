@@ -21,6 +21,9 @@ mod theme;
 mod vendor;
 mod zones;
 
+/// Wayland app id and X11 class; `assets/app/<APP_ID>.desktop` is named after it.
+const APP_ID: &str = "io.github.insomniodev.elsewhere";
+
 /// Tall, to suit the list; the map scrolls sideways instead. Under 600 so it
 /// fits a 1200-pixel display at 2x.
 const SIZE: Size<Pixels> = size(px(400.), px(560.));
@@ -135,6 +138,8 @@ fn main() {
                     // Linux: the app draws its own title bar and frame, if
                     // the compositor allows.
                     window_decorations: Some(WindowDecorations::Client),
+                    // Matches the desktop entry, so docks show its icon.
+                    app_id: Some(APP_ID.into()),
                     ..Default::default()
                 },
                 |window, cx| cx.new(|cx| app::Elsewhere::new(settings, window, cx)),
