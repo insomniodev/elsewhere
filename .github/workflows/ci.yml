@@ -29,3 +29,14 @@ jobs:
         if: runner.os == 'Linux'
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo test
+
+  # The release bundles these; a crate under a license not in about.toml
+  # would otherwise only fail at release time.
+  licenses:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about
+      - run: cargo about generate about.hbs -o dependency_licenses.md
