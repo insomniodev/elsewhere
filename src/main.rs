@@ -2,8 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use gpui::{
-    App, Application, Bounds, KeyBinding, Pixels, Size, TitlebarOptions, WindowBounds,
-    WindowDecorations, WindowOptions, prelude::*, px, size,
+    App, Bounds, KeyBinding, Pixels, Size, TitlebarOptions, WindowBounds, WindowDecorations,
+    WindowOptions, prelude::*, px, size,
 };
 
 mod app;
@@ -54,10 +54,19 @@ fn bounds(settings: Option<&settings::Settings>, cx: &App) -> Bounds<Pixels> {
 }
 
 fn main() {
-    Application::new()
+    gpui_platform::application()
         .with_assets(assets::Assets)
         .run(|cx: &mut App| {
             vendor::text_input::register_key_bindings(cx);
+            // cmd on macOS and ctrl elsewhere. gpui's own "secondary-" needs
+            // the host OS, which `KeyBinding::new` no longer has.
+            let secondary = |mac: &'static str, other: &'static str| {
+                if cfg!(target_os = "macos") {
+                    mac
+                } else {
+                    other
+                }
+            };
             cx.bind_keys([
                 KeyBinding::new("enter", app::Commit, Some("PinEditor")),
                 KeyBinding::new("escape", app::Cancel, Some("PinEditor")),
@@ -70,12 +79,23 @@ fn main() {
                 KeyBinding::new("alt-up", app::Earlier, Some("Elsewhere")),
                 KeyBinding::new("tab", app::FocusNext, Some("Elsewhere")),
                 KeyBinding::new("shift-tab", app::FocusPrev, Some("Elsewhere")),
-                // "secondary" is cmd on macOS and ctrl elsewhere.
-                KeyBinding::new("secondary-1", app::ShowList, Some("Elsewhere")),
-                KeyBinding::new("secondary-2", app::ShowMap, Some("Elsewhere")),
-                KeyBinding::new("secondary-3", app::ShowGrid, Some("Elsewhere")),
-                KeyBinding::new("secondary-q", app::Close, Some("Elsewhere")),
-                KeyBinding::new("secondary-w", app::Close, Some("Elsewhere")),
+                KeyBinding::new(
+                    secondary("cmd-1", "ctrl-1"),
+                    app::ShowList,
+                    Some("Elsewhere"),
+                ),
+                KeyBinding::new(
+                    secondary("cmd-2", "ctrl-2"),
+                    app::ShowMap,
+                    Some("Elsewhere"),
+                ),
+                KeyBinding::new(
+                    secondary("cmd-3", "ctrl-3"),
+                    app::ShowGrid,
+                    Some("Elsewhere"),
+                ),
+                KeyBinding::new(secondary("cmd-q", "ctrl-q"), app::Close, Some("Elsewhere")),
+                KeyBinding::new(secondary("cmd-w", "ctrl-w"), app::Close, Some("Elsewhere")),
                 KeyBinding::new("enter", app::Edit, Some("Row")),
                 KeyBinding::new("delete", app::Remove, Some("Row")),
                 KeyBinding::new("backspace", app::Remove, Some("Row")),
@@ -90,7 +110,7 @@ fn main() {
             ]);
             // Whatever closes the one window, the compositor included, ends
             // the app with it.
-            cx.on_window_closed(|cx| {
+            cx.on_window_closed(|cx, _| {
                 if cx.windows().is_empty() {
                     cx.quit();
                 }

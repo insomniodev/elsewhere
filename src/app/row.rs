@@ -116,7 +116,7 @@ impl Elsewhere {
         if self.focus.notice_action.is_focused(window)
             && let Some(row) = self.focus.row(geonameid)
         {
-            window.focus(&row.clone());
+            window.focus(&row.clone(), cx);
         }
     }
 
@@ -187,7 +187,7 @@ impl Elsewhere {
             self.snapshot_pin();
             self.focus.before_edit = window.focused(cx);
         }
-        window.focus(&input.focus_handle(cx));
+        window.focus(&input.focus_handle(cx), cx);
         cx.observe(&input, Self::retime).detach();
         self.editing = Some((geonameid, input));
         cx.notify();
@@ -263,7 +263,7 @@ impl Elsewhere {
                 .before_edit
                 .take()
                 .unwrap_or_else(|| self.picker.focus_handle(cx));
-            window.focus(&back);
+            window.focus(&back, cx);
         }
         cx.notify();
     }

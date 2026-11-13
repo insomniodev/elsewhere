@@ -147,7 +147,7 @@ impl Elsewhere {
                     .map_or(0, |at| at.min(self.focus.stops.len() - 1));
                 self.focus.at = Some(at);
                 let handle = self.focus.stops[at].0.clone();
-                cx.defer_in(window, move |_, window, _| window.focus(&handle));
+                cx.defer_in(window, move |_, window, cx| window.focus(&handle, cx));
             }
         }
     }
@@ -193,7 +193,7 @@ impl Elsewhere {
             self.saved_scroll.scroll_to_item(item);
         }
         self.focus.at = Some(next);
-        window.focus(&handle);
+        window.focus(&handle, cx);
         cx.notify();
     }
 }

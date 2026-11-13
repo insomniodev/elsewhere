@@ -8,8 +8,8 @@ use std::time::Duration;
 
 use gpui::{
     Axis, Bounds, Context, CursorStyle, DispatchPhase, MouseButton, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, Path, PathBuilder, Pixels, Point, ScrollDelta, ScrollHandle, ScrollWheelEvent,
-    Size, TextRun, Window, canvas, div, fill, point, prelude::*, px, rgb, rgba, size,
+    MouseUpEvent, Path, PathBuilder, Pixels, Point, ScrollDelta, ScrollEvent, ScrollHandle, Size,
+    TextAlign, TextRun, Window, canvas, div, fill, point, prelude::*, px, rgb, rgba, size,
 };
 use jiff::Zoned;
 
@@ -137,9 +137,9 @@ impl Elsewhere {
                             cx.notify();
                         }),
                     )
-                    .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, _window, cx| {
-                        this.wheel(event, cx)
-                    }))
+                    .on_scroll(
+                        cx.listener(|this, event: &ScrollEvent, _window, cx| this.wheel(event, cx)),
+                    )
                     .child(
                         div()
                             .relative()
@@ -196,7 +196,7 @@ impl Elsewhere {
     /// Ctrl scrubs. A plain wheel is too easy to turn by accident, reaching
     /// for a pan, so it only says, once, how to scrub; the scroller takes
     /// shift and sideways wheels as pans.
-    fn wheel(&mut self, event: &ScrollWheelEvent, cx: &mut Context<Self>) {
+    fn wheel(&mut self, event: &ScrollEvent, cx: &mut Context<Self>) {
         if event.modifiers.control {
             self.scrub(event, cx);
             return;
@@ -220,7 +220,7 @@ impl Elsewhere {
 
     /// A notch down is a quarter hour later, the way the night moves. It is an
     /// ordinary pin, so everything follows it and escape undoes it.
-    fn scrub(&mut self, event: &ScrollWheelEvent, cx: &mut Context<Self>) {
+    fn scrub(&mut self, event: &ScrollEvent, cx: &mut Context<Self>) {
         let notches = match event.delta {
             ScrollDelta::Lines(lines) => lines.y / NOTCH_LINES,
             ScrollDelta::Pixels(pixels) => f32::from(pixels.y) / NOTCH_PIXELS,
@@ -380,7 +380,8 @@ impl Elsewhere {
                         .clamp(rect.left(), (rect.right() - line.width).max(rect.left()));
                     let origin = point(left, rect.bottom() - TICK - OFFSET_GAP - OFFSET_LINE);
                     // A label that fails to paint is only a label missing.
-                    line.paint(origin, OFFSET_LINE, window, cx).ok();
+                    line.paint(origin, OFFSET_LINE, TextAlign::Left, None, window, cx)
+                        .ok();
                 }
 
                 // The crop is an editable constant, and clamping would park
@@ -480,7 +481,7 @@ fn pan(grab: Rc<Cell<Option<Pan>>>, scroll: ScrollHandle) -> impl IntoElement {
                         window.refresh();
                         return;
                     }
-                    let most = scroll.max_offset().width;
+                    let most = scroll.max_offset().x;
                     let x = (pan.offset.x + event.position.x - pan.from.x).clamp(-most, px(0.));
                     scroll.set_offset(point(x, pan.offset.y));
                     window.refresh();
@@ -498,7 +499,7 @@ fn pan(grab: Rc<Cell<Option<Pan>>>, scroll: ScrollHandle) -> impl IntoElement {
 }
 
 /// `None` for too few points or a path lyon cannot tessellate.
-fn polygon(points: impl Iterator<Item = Point<Pixels>>) -> Option<Path<Pixels>> {
+fn polygon(points: impl Iterator<Item = Point<Pixels>>) -> Option<Path> {
     let points: Vec<_> = points.collect();
     if points.len() < 3 {
         return None;
@@ -509,7 +510,7 @@ fn polygon(points: impl Iterator<Item = Point<Pixels>>) -> Option<Path<Pixels>> 
 }
 
 /// `None` for too few points or a path lyon cannot tessellate.
-fn polyline(points: impl Iterator<Item = Point<Pixels>>) -> Option<Path<Pixels>> {
+fn polyline(points: impl Iterator<Item = Point<Pixels>>) -> Option<Path> {
     let points: Vec<_> = points.collect();
     if points.len() < 2 {
         return None;
@@ -519,7 +520,7 @@ fn polyline(points: impl Iterator<Item = Point<Pixels>>) -> Option<Path<Pixels>>
     builder.build().ok()
 }
 
-fn rays(centre: Point<Pixels>) -> Option<Path<Pixels>> {
+fn rays(centre: Point<Pixels>) -> Option<Path> {
     let mut builder = PathBuilder::stroke(RAY_WIDTH);
     for ray in 0..SUN_RAYS {
         let angle = std::f32::consts::TAU * ray as f32 / SUN_RAYS as f32;

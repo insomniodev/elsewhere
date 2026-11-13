@@ -48,7 +48,7 @@ impl EventEmitter<SearchEvent> for SearchPicker {}
 impl SearchPicker {
     pub(super) fn new(index: Rc<SearchIndex>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let input = cx.new(|cx| TextInput::new("search for a city...", cx));
-        window.focus(&input.focus_handle(cx));
+        window.focus(&input.focus_handle(cx), cx);
         cx.observe(&input, Self::search).detach();
         // Tabbing away would leave the panel over the rows it moved to.
         cx.on_blur(&input.focus_handle(cx), window, |this, _window, cx| {
@@ -110,8 +110,8 @@ impl SearchPicker {
     }
 
     /// `query` is cleared with the input text so `search()` stays quiet.
-    fn reset(&mut self, cx: &mut Context<Self>) {
-        self.input.update(cx, |input, cx| input.reset(cx));
+    fn reset(&mut self, window: &Window, cx: &mut Context<Self>) {
+        self.input.update(cx, |input, cx| input.reset(window, cx));
         self.query.clear();
         self.results.clear();
         self.selected = 0;
@@ -124,25 +124,25 @@ impl SearchPicker {
         !self.query.is_empty()
     }
 
-    fn pick(&mut self, geonameid: u32, cx: &mut Context<Self>) {
-        self.reset(cx);
+    fn pick(&mut self, geonameid: u32, window: &Window, cx: &mut Context<Self>) {
+        self.reset(window, cx);
         cx.emit(SearchEvent::Picked(geonameid));
         cx.notify();
     }
 
-    fn confirm(&mut self, _: &Confirm, _window: &mut Window, cx: &mut Context<Self>) {
+    fn confirm(&mut self, _: &Confirm, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(&geonameid) = self.results.get(self.selected) {
-            self.pick(geonameid, cx);
+            self.pick(geonameid, window, cx);
         }
     }
 
-    fn clear(&mut self, _: &Clear, _window: &mut Window, cx: &mut Context<Self>) {
+    fn clear(&mut self, _: &Clear, window: &mut Window, cx: &mut Context<Self>) {
         // Nothing to clear, so the window gets the key.
         if self.query.is_empty() {
             cx.propagate();
             return;
         }
-        self.reset(cx);
+        self.reset(window, cx);
         cx.notify();
     }
 
@@ -254,8 +254,8 @@ impl Render for SearchPicker {
                                                     .active(|style| style.opacity(0.8))
                                                     .on_click(cx.listener({
                                                         let geonameid = *geonameid;
-                                                        move |this, _event, _window, cx| {
-                                                            this.pick(geonameid, cx)
+                                                        move |this, _event, window, cx| {
+                                                            this.pick(geonameid, window, cx)
                                                         }
                                                     }))
                                                     .child(

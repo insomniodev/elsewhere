@@ -54,12 +54,12 @@ pub(super) struct Scrollbar {
 fn thumb(handle: &ScrollHandle, axis: Axis, track: Pixels) -> Option<(Pixels, Pixels)> {
     let (overflow, viewport, scrolled) = match axis {
         Axis::Vertical => (
-            handle.max_offset().height,
+            handle.max_offset().y,
             handle.bounds().size.height,
             -handle.offset().y,
         ),
         Axis::Horizontal => (
-            handle.max_offset().width,
+            handle.max_offset().x,
             handle.bounds().size.width,
             -handle.offset().x,
         ),
@@ -76,8 +76,8 @@ fn scroll_to(handle: &ScrollHandle, axis: Axis, scrolled: Pixels, window: &mut W
     let max = handle.max_offset();
     let offset = handle.offset();
     handle.set_offset(match axis {
-        Axis::Vertical => point(offset.x, -scrolled.clamp(px(0.), max.height)),
-        Axis::Horizontal => point(-scrolled.clamp(px(0.), max.width), offset.y),
+        Axis::Vertical => point(offset.x, -scrolled.clamp(px(0.), max.y)),
+        Axis::Horizontal => point(-scrolled.clamp(px(0.), max.x), offset.y),
     });
     window.refresh();
 }
@@ -179,8 +179,8 @@ impl RenderOnce for Scrollbar {
                             // The thumb follows the pointer; the content
                             // follows the thumb, by the overflow it spans.
                             let (overflow, free) = match axis {
-                                Axis::Vertical => (handle.max_offset().height, track - length),
-                                Axis::Horizontal => (handle.max_offset().width, track - length),
+                                Axis::Vertical => (handle.max_offset().y, track - length),
+                                Axis::Horizontal => (handle.max_offset().x, track - length),
                             };
                             if free > px(0.) {
                                 let to = (along(event.position) - origin - grab) / free;
