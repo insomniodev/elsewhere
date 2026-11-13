@@ -1,9 +1,12 @@
-use std::cell::Cell;
+use std::{
+    cell::Cell,
+    time::{Duration, Instant},
+};
 
 use gpui::{
-    App, Axis, Bounds, DispatchPhase, ElementId, HitboxBehavior, MouseButton, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, Pixels, Point, RenderOnce, ScrollHandle, Window, canvas, fill,
-    point, prelude::*, px, rgb, size,
+    App, Axis, Bounds, DispatchPhase, ElementId, HitboxBehavior, Hsla, MouseButton, MouseDownEvent,
+    MouseExitEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, RenderOnce, ScrollHandle, Window,
+    canvas, fill, point, prelude::*, px, rgb, size,
 };
 
 use crate::theme;
@@ -15,19 +18,33 @@ const THUMB_ACTIVE: Pixels = px(5.);
 const HIT: Pixels = px(10.);
 const MIN_THUMB: Pixels = px(20.);
 
-/// Only a drag in progress and the hover outlive a frame.
+/// How long the bar stays after the last scroll, or after the pointer leaves
+/// it, and how long it then takes to fade.
+const LINGER: Duration = Duration::from_millis(1000);
+const FADE: Duration = Duration::from_millis(200);
+/// The thumb lies over content, so it is a light tint rather than a surface.
+const REST: f32 = 0.45;
+const ACTIVE: f32 = 0.75;
+
 #[derive(Default)]
 struct State {
     /// Where on the thumb, along the axis, the drag took hold.
     grab: Cell<Option<Pixels>>,
     over_thumb: Cell<bool>,
+    /// Whether the pointer is on the bar's strip. Over what it scrolls is not
+    /// enough: a view is mostly that, so the bar would never leave.
+    over_area: Cell<bool>,
+    /// The offset along the axis at the last paint; `None` before the first.
+    last: Cell<Option<Pixels>>,
+    /// When the bar last had a reason to show.
+    active: Cell<Option<Instant>>,
 }
 
-/// A thumb to drag and a track to page by. `inset` is the offset from the
-/// container's right edge, or bottom edge for a horizontal bar, of the drawn
-/// thumb; negative hangs it outside, in the window padding, clear of the
-/// content. The hit area is centred on the thumb, so it never swallows the
-/// wheel: that goes to the content beneath, as before.
+/// A thumb to drag and a track to page by, drawn over the content it scrolls
+/// and only while the bar is hovered, dragged or lately scrolled. `inset` is the
+/// offset from the container's right edge, or bottom edge for a horizontal
+/// bar, of the drawn thumb. The hit area is centred on the thumb, so it never
+/// swallows the wheel: that goes to the content beneath, as before.
 pub(super) fn scrollbar(
     id: impl Into<ElementId>,
     handle: &ScrollHandle,
@@ -109,10 +126,38 @@ impl RenderOnce for Scrollbar {
                 let Some((length, start)) = thumb(&handle, axis, track) else {
                     return;
                 };
-                let (dragging, over_thumb) = {
+                let scrolled = along(handle.offset());
+                let now = Instant::now();
+                let (dragging, over_thumb, opacity) = {
                     let state = state.read(cx);
-                    (state.grab.get().is_some(), state.over_thumb.get())
+                    // The first paint counts as a scroll, so a view opening
+                    // with overflow shows its bar once.
+                    if state.last.replace(Some(scrolled)) != Some(scrolled) {
+                        if state.active.get().is_none() {
+                            let over = bounds.contains(&window.mouse_position());
+                            state.over_area.set(over);
+                        }
+                        state.active.set(Some(now));
+                    }
+                    let dragging = state.grab.get().is_some();
+                    let opacity = if dragging || state.over_area.get() {
+                        1.
+                    } else {
+                        let idle = state
+                            .active
+                            .get()
+                            .map_or(FADE, |at| now.duration_since(at).saturating_sub(LINGER));
+                        let opacity = 1. - (idle.as_secs_f32() / FADE.as_secs_f32()).min(1.);
+                        // Nothing else repaints an idle window through the
+                        // linger and the fade.
+                        if opacity > 0. {
+                            window.request_animation_frame();
+                        }
+                        opacity
+                    };
+                    (dragging, state.over_thumb.get(), opacity)
                 };
+                let shown = opacity > 0.;
                 let thickness = if dragging || over_thumb {
                     THUMB_ACTIVE
                 } else {
@@ -128,10 +173,13 @@ impl RenderOnce for Scrollbar {
                         size(length, thickness),
                     ),
                 };
-                window.paint_quad(
-                    fill(thumb_bounds(thickness), rgb(theme::SURFACE1))
-                        .corner_radii(thickness / 2.),
-                );
+                if shown {
+                    let strength = if dragging || over_thumb { ACTIVE } else { REST };
+                    let color = Hsla::from(rgb(theme::OVERLAY2)).opacity(strength * opacity);
+                    window.paint_quad(
+                        fill(thumb_bounds(thickness), color).corner_radii(thickness / 2.),
+                    );
+                }
                 // The whole width of the hit area, not just what is drawn.
                 let grip = match axis {
                     Axis::Vertical => {
@@ -145,7 +193,9 @@ impl RenderOnce for Scrollbar {
                 window.on_mouse_event({
                     let (state, handle, hitbox) = (state.clone(), handle.clone(), hitbox.clone());
                     move |event: &MouseDownEvent, phase, window, cx| {
-                        if phase != DispatchPhase::Bubble
+                        // Out of sight, it is not there to press.
+                        if !shown
+                            || phase != DispatchPhase::Bubble
                             || event.button != MouseButton::Left
                             || !hitbox.is_hovered(window)
                         {
@@ -188,8 +238,24 @@ impl RenderOnce for Scrollbar {
                             }
                             return;
                         }
-                        let over = hitbox.is_hovered(window) && grip.contains(&event.position);
-                        if state.over_thumb.replace(over) != over {
+                        let over_area = hitbox.is_hovered(window);
+                        let over = over_area && grip.contains(&event.position);
+                        let left = state.over_area.replace(over_area) && !over_area;
+                        if left {
+                            state.active.set(Some(Instant::now()));
+                        }
+                        if state.over_thumb.replace(over) != over || left || over_area != shown {
+                            window.refresh();
+                        }
+                    }
+                });
+                window.on_mouse_event({
+                    let state = state.clone();
+                    move |_: &MouseExitEvent, _phase, window, cx| {
+                        let state = state.read(cx);
+                        if state.over_area.replace(false) {
+                            state.over_thumb.set(false);
+                            state.active.set(Some(Instant::now()));
                             window.refresh();
                         }
                     }

@@ -588,12 +588,12 @@ impl Render for Elsewhere {
                                         |list| list.child(self.render_drop_tail(cx)),
                                     ),
                             )
-                            // Hung out in the window padding, clear of the times.
+                            // Over the rows' right edge, short of the times.
                             .child(scrollbar(
                                 "saved-bar",
                                 &self.saved_scroll,
                                 Axis::Vertical,
-                                px(-6.),
+                                px(2.),
                             ))
                     }
                 }

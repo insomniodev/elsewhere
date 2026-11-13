@@ -160,26 +160,27 @@ impl Elsewhere {
                             ),
                     ),
             )
-            // Hung in the window padding, as the list's is.
+            // Under the heads, and short of the columns' bar at the corner.
+            // Flush with the edge, so it lies on the last column's rule.
             .child(
                 div()
                     .absolute()
                     .top(header::HEAD)
-                    .bottom_0()
+                    .bottom_2()
                     .left_0()
                     .right_0()
                     .child(scrollbar(
                         "hours-bar",
                         &self.grid_hours,
                         Axis::Vertical,
-                        px(-6.),
+                        px(0.),
                     )),
             )
             .child(scrollbar(
                 "columns-bar",
                 &self.grid_scroll,
                 Axis::Horizontal,
-                px(-6.),
+                px(0.),
             ))
             .child(self.render_date(now))
             // Beside here's column, not over its hours.

@@ -48,8 +48,6 @@ const NOTCH_PIXELS: f32 = 40.0;
 /// gpui reports a wheel's click as three lines, as desktops scroll text.
 const NOTCH_LINES: f32 = 3.0;
 
-const SCROLLBAR_GAP: Pixels = px(4.);
-
 /// Room beside the outermost cities when the map is fitted to them.
 const MARGIN: Pixels = px(16.);
 /// The narrowest span a fit frames, as a share of the world, so one city
@@ -150,8 +148,8 @@ impl Elsewhere {
                     ),
             )
             .child(pan(self.map_pan.clone(), self.map_scroll.clone()))
-            // Just under the map rather than the region, which the letterbox
-            // may leave far below it.
+            // Along the map's own bottom edge rather than the region's, which
+            // the letterbox may leave far below it.
             .when_some(layout.filter(Layout::overflows), |map, layout| {
                 map.child(
                     div()
@@ -164,7 +162,7 @@ impl Elsewhere {
                             "map-bar",
                             &self.map_scroll,
                             Axis::Horizontal,
-                            -SCROLLBAR_GAP,
+                            px(2.),
                         )),
                 )
             })
