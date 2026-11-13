@@ -4,7 +4,6 @@ mod pins;
 
 use std::cell::Cell;
 use std::rc::Rc;
-use std::time::Duration;
 
 use gpui::{
     Axis, Bounds, Context, CursorStyle, DispatchPhase, MouseButton, MouseDownEvent, MouseMoveEvent,
@@ -15,7 +14,6 @@ use jiff::Zoned;
 
 use super::footer::{BANNER_HEIGHT, FOOTER_HEIGHT};
 use super::here::hint_over;
-use super::notice::{Kind, Notice};
 use super::scrollbar::scrollbar;
 use super::{Elsewhere, GAP, PAD_BOTTOM};
 use crate::clock;
@@ -53,10 +51,6 @@ const MARGIN: Pixels = px(16.);
 /// The narrowest span a fit frames, as a share of the world, so one city
 /// shows its region rather than the closest zoom.
 const MIN_SPAN: f32 = 1.0 / 3.0;
-
-/// A plain wheel over the map used to scrub, so it says once what does now.
-const SCRUB_HINT: &str = "ctrl + scroll or alt + ↑/↓ moves the time";
-const SCRUB_HINT_TIMEOUT: Duration = Duration::from_secs(4);
 
 /// How far in and where the map looks, kept between fits so that neither a
 /// resize nor the banner reframes it.
@@ -191,27 +185,11 @@ impl Elsewhere {
     }
 
     /// Ctrl scrubs. A plain wheel is too easy to turn by accident, reaching
-    /// for a pan, so it only says, once, how to scrub; the scroller takes
-    /// shift and sideways wheels as pans.
+    /// for a pan, so it does nothing; the scroller takes shift and sideways
+    /// wheels as pans.
     fn wheel(&mut self, event: &ScrollEvent, cx: &mut Context<Self>) {
         if event.modifiers.control {
             self.scrub(event, cx);
-            return;
-        }
-        let (x, y) = match event.delta {
-            ScrollDelta::Lines(lines) => (lines.x, lines.y),
-            ScrollDelta::Pixels(pixels) => (f32::from(pixels.x), f32::from(pixels.y)),
-        };
-        if event.modifiers.shift || y.abs() <= x.abs() || self.scrub_hinted {
-            return;
-        }
-        // A notice already up is likely a failure, which outranks a hint.
-        if self.notice.is_none() {
-            self.scrub_hinted = true;
-            self.show_notice(
-                Notice::new(Kind::Info, SCRUB_HINT).timeout(SCRUB_HINT_TIMEOUT),
-                cx,
-            );
         }
     }
 
@@ -241,12 +219,6 @@ impl Elsewhere {
         let scroll = self.map_scroll.clone();
         let framed = self.framed();
         let frame = self.map_frame.clone();
-        // What the banner adds above the map when it shows.
-        let lift = if self.pinned.is_some() {
-            BANNER_HEIGHT + GAP
-        } else {
-            px(0.)
-        };
         let sun = geo::subsolar(now);
 
         canvas(
@@ -255,14 +227,12 @@ impl Elsewhere {
                 // wider. The scroller has measured it by now.
                 let region = scroll.bounds();
                 let viewport = region.size;
-                // The room the map would have with neither the banner nor a
-                // notice, taken from the window so that both leave it alone.
-                let top = region.top() - lift;
+                // The room under the search and over the banner or, unpinned,
+                // the hint in its place. Taken from the window, so a notice
+                // leaves the map alone too.
                 let bottom = window.viewport_size().height - (FOOTER_HEIGHT + GAP + PAD_BOTTOM);
-                let level = (top + bottom) / 2. - region.top();
-                // As tall as it can be with the banner shown, so pinning a
-                // time never rescales it.
-                let tallest = bottom - top - (BANNER_HEIGHT + GAP);
+                let tallest = bottom - region.top() - (BANNER_HEIGHT + GAP);
+                let level = tallest / 2.;
                 let refit = frame.get().is_none() && viewport.width > px(0.);
                 let framing = match frame.get() {
                     Some(framing) => framing,

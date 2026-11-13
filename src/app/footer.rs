@@ -252,10 +252,39 @@ impl Elsewhere {
             .build()
     }
 
-    /// A pin with no row reads here. Shown only while pinned:
-    /// entering a mode on purpose earns the layout shift. Names the pinned
-    /// day once it leaves today, since the rows' day tags are relative to it,
-    /// and keeps the real time in view.
+    /// How to move the time, in the banner's place until one is pinned: the
+    /// room is the banner's either way, so nothing moves or resizes as the
+    /// pin comes and goes, and unpinned it is not left empty. Names only what
+    /// works now: here's row, all an empty list has, opens no editor.
+    pub(super) fn render_time_hint(&self) -> Option<impl IntoElement + use<>> {
+        if self.pinned.is_some() {
+            return None;
+        }
+        let hint = match self.view {
+            View::Map => "ctrl + scroll or alt + ↑/↓ moves the time",
+            View::Grid => "click an hour or alt + ↑/↓ moves the time",
+            View::List if self.saved.is_empty() => "alt + ↑/↓ moves the time",
+            View::List => "click a time or alt + ↑/↓ moves the time",
+        };
+        Some(
+            div()
+                .flex()
+                .items_center()
+                .h(BANNER_HEIGHT)
+                // The banner's inset and frame, so its label lands on this.
+                .px_2()
+                .border_1()
+                .border_color(transparent_black())
+                .text_xs()
+                .text_color(rgb(theme::OVERLAY2))
+                .child(div().min_w_0().truncate().child(hint)),
+        )
+    }
+
+    /// A pin with no row reads here. Shown only while pinned, above the
+    /// footer in the hint's place, so nothing moves as it comes and goes.
+    /// Names the pinned day once it leaves today, since the rows' day tags
+    /// are relative to it, and keeps the real time in view.
     pub(super) fn render_banner(
         &self,
         now: &Zoned,

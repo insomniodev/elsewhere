@@ -189,9 +189,6 @@ pub struct Elsewhere {
     grid_at_now: Rc<Cell<bool>>,
     /// Wheel motion over the map that has not yet added up to a whole notch.
     scrub_carry: f32,
-    /// Whether a plain wheel over the map has said how to scrub, which it
-    /// does once a session.
-    scrub_hinted: bool,
     /// The grid's keyboard cursor as (column, hour). `None` starts it on
     /// the first column at the shown hour.
     grid_cursor: Option<(usize, usize)>,
@@ -281,7 +278,6 @@ impl Elsewhere {
             grid_hours: ScrollHandle::new(),
             grid_at_now: Rc::new(Cell::new(false)),
             scrub_carry: 0.,
-            scrub_hinted: false,
             grid_cursor: None,
             focus: Focus::new(cx),
             mono: row::mono(cx),
@@ -553,7 +549,6 @@ impl Render for Elsewhere {
             .text_color(rgb(theme::TEXT))
             .child(self.render_titlebar(window, cx))
             .child(self.picker.clone())
-            .children(self.render_banner(&now, window, cx))
             // Scrolls on its own so the input and toolbar stay put. `min_h_0`
             // lets this flex child shrink below its content and overflow.
             .child(div().relative().flex_1().min_h_0().map(|region| {
@@ -599,6 +594,9 @@ impl Render for Elsewhere {
                 }
             }))
             .children(self.render_notice(cx))
+            // Next to the footer, so a notice coming or going never moves it.
+            .children(self.render_banner(&now, window, cx))
+            .children(self.render_time_hint())
             .child(self.render_footer(cx))
             // Last, so they lie over everything else.
             .children(resize::handles(window))

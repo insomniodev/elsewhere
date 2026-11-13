@@ -1,7 +1,7 @@
 //! Keyboard focus. The window walks its own list of stops rather than gpui's
 //! tab order, which cannot take the vendored search input as a stop, and
-//! which would put the banner and the notice where they paint: before the
-//! list and the footer, shifting every stop each time they come and go.
+//! which would put the notice and the banner where they paint: before the
+//! footer, shifting its every stop each time they come and go.
 
 use std::collections::HashMap;
 
