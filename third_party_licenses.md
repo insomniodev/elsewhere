@@ -4,7 +4,7 @@
 
 `assets/icons/milestone.svg`, `assets/icons/clock-12.svg`,
 `assets/icons/map.svg`, `assets/icons/rows.svg`, `assets/icons/columns.svg`,
-`assets/icons/x.svg`, `assets/icons/minus.svg`,
+`assets/icons/fit.svg`, `assets/icons/x.svg`, `assets/icons/minus.svg`,
 `assets/icons/maximize-2.svg` and `assets/icons/minimize-2.svg` are from
 [Lucide](https://lucide.dev).
 
@@ -24,8 +24,8 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-`trash` is one of the Lucide icons derived from the Feather project, which
-carries its own MIT license:
+`x`, `minus` and `minimize-2` are among the Lucide icons derived from the
+Feather project, which carries its own MIT license:
 
 The MIT License (MIT)
 
