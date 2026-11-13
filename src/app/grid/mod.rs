@@ -101,7 +101,7 @@ impl Elsewhere {
     ) -> impl IntoElement + use<> {
         let day = hours::Day::of(now);
         // Alone, here's column keeps its own width at the left rather than
-        // stretching to set its labels against the far edge.
+        // stretching its rule to the far edge.
         let alone = order.is_empty();
         let mut columns = self.grid_columns(order);
         if self.focus.on(&self.focus.grid) {
@@ -382,9 +382,8 @@ impl Elsewhere {
             .h(ROW)
             .flex()
             .items_center()
-            .justify_end()
             .gap(TAG_GAP)
-            .pr(INSET)
+            .pl(INSET)
             .text_size(LABEL)
             .text_color(rgb(theme::OVERLAY2))
             .when(column.cursor == Some(i), |slot| slot.child(ring()));
@@ -414,7 +413,7 @@ impl Elsewhere {
                         div()
                             .absolute()
                             .top(RULE)
-                            .right(INSET)
+                            .left(INSET)
                             .text_color(rgb(theme::SUBTEXT0))
                             .line_height(DAY_LINE)
                             .child(clock::day_label(date)),

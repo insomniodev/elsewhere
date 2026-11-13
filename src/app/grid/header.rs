@@ -1,6 +1,6 @@
-//! Set flush right over the labels, as a calendar sets its zone names. A
-//! saved city's head shows its remove button while hovered, on the offset's
-//! line, where there is room for it.
+//! Set flush left over the labels, under the date. A saved city's head
+//! shows its remove button while hovered, on the offset's line, where there
+//! is room for it.
 
 use gpui::{Context, Pixels, Styled, div, prelude::*, px, rgb};
 use jiff::Zoned;
@@ -17,8 +17,9 @@ pub(super) const DATE: Pixels = px(18.);
 
 /// Fixed, so a column with no offset line keeps the rules level, and the
 /// hours' scrollbar knows where to start. The heads sit at the bottom, under
-/// the date line.
-pub(super) const HEAD: Pixels = px(58.);
+/// the date line, with a gap between so the date reads as the grid's title
+/// rather than a third line of the first head.
+pub(super) const HEAD: Pixels = px(66.);
 
 /// What a head's remove button shows on the hover of.
 const HEAD_GROUP: &str = "head";
@@ -66,7 +67,7 @@ impl Elsewhere {
             .group(HEAD_GROUP)
             .flex_1()
             .min_w(COLUMN)
-            .pr(INSET)
+            .pl(INSET)
             .flex()
             .flex_col()
             .justify_end()
@@ -101,11 +102,10 @@ impl Elsewhere {
             div()
                 .flex()
                 .flex_row()
-                .justify_end()
                 .items_center()
                 .gap_1()
-                .child(self.render_remove_small(geonameid, HEAD_GROUP, cx))
-                .children(offset),
+                .children(offset)
+                .child(self.render_remove_small(geonameid, HEAD_GROUP, cx)),
         )
     }
 }
@@ -114,8 +114,5 @@ impl Elsewhere {
 /// shaping for the frame, from a taffy sizing pass at zero or full width, so
 /// the ellipsis would land in the wrong place.
 fn shortened<T: Styled>(line: T) -> T {
-    line.text_ellipsis()
-        .line_clamp(1)
-        .text_size(LABEL)
-        .text_right()
+    line.text_ellipsis().line_clamp(1).text_size(LABEL)
 }
