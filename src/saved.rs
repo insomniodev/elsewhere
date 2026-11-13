@@ -47,13 +47,15 @@ fn shown(path: &Path) -> String {
     }
 }
 
-/// io's message in the app's voice: lower case, without the os error number.
+/// io's message in the app's voice: lower case, without the os error number
+/// or the full stop Windows ends its messages with.
 fn reason(e: &io::Error) -> String {
     let message = e.to_string();
     let message = match message.find(" (os error") {
         Some(at) => &message[..at],
         None => &message,
     };
+    let message = message.strip_suffix('.').unwrap_or(message);
     let mut chars = message.chars();
     match chars.next() {
         Some(first) => first.to_lowercase().chain(chars).collect(),
@@ -220,15 +222,24 @@ mod tests {
 
     #[test]
     fn a_file_that_cannot_be_read_is_not_an_empty_list() {
-        // A directory is there but is no file to read.
-        let error = read(&env::temp_dir()).unwrap_err();
+        // There, but not text. (A directory would do on Unix, but Windows
+        // reads one as empty.)
+        let path = env::temp_dir().join(format!("elsewhere-unreadable-{}", std::process::id()));
+        fs::write(&path, [0xff, 0xfe, 0xfd]).unwrap();
+        let error = read(&path).unwrap_err();
+        fs::remove_file(&path).unwrap();
         assert!(error.starts_with("can't read "), "{error}");
     }
 
     #[test]
     fn io_errors_read_lower_case_without_the_os_number() {
-        let e = io::Error::from_raw_os_error(13);
-        assert_eq!(reason(&e), "permission denied");
+        // Access denied, which Windows numbers 5 and words with a full stop.
+        let (code, reads) = if cfg!(windows) {
+            (5, "access is denied")
+        } else {
+            (13, "permission denied")
+        };
+        assert_eq!(reason(&io::Error::from_raw_os_error(code)), reads);
     }
 
     #[test]
