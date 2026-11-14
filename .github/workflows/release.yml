@@ -53,11 +53,12 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           name=elsewhere-${GITHUB_REF_NAME}-${{ matrix.target }}
-          id=io.github.insomniodev.elsewhere
-          mkdir -p $name/bin $name/share/applications \
+          id=dev.insomnio.elsewhere
+          mkdir -p $name/bin $name/share/applications $name/share/metainfo \
             $name/share/icons/hicolor/scalable/apps $name/share/doc/elsewhere
           cp target/${{ matrix.target }}/release/elsewhere $name/bin/
           cp assets/app/$id.desktop $name/share/applications/
+          cp assets/app/$id.metainfo.xml $name/share/metainfo/
           cp assets/app/$id.svg $name/share/icons/hicolor/scalable/apps/
           cp readme.md license.md third_party_licenses.md dependency_licenses.md \
             $name/share/doc/elsewhere/

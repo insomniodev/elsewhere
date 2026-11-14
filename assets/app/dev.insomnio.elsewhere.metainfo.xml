@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.insomnio.elsewhere</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <name>elsewhere</name>
+  <summary>Check the time in other places</summary>
+  <developer id="dev.insomnio">
+    <name>Diego Serrano</name>
+  </developer>
+
+  <description>
+    <p>
+      Keep a list of cities and see what time it is in each of them at a glance.
+      Useful for planning a call across time zones, or just checking whether
+      someone far away is still awake.
+    </p>
+    <ul>
+      <li>Search over 60,000 cities and keep the ones you care about</li>
+      <li>See them as a list, on a world map with the night side shaded, or side by side in an hour grid</li>
+      <li>Type a what-if time, or scroll over the map, to see the others follow</li>
+      <li>Works offline: city and time zone data are built in</li>
+      <li>Fully usable from the keyboard</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">dev.insomnio.elsewhere.desktop</launchable>
+  <provides>
+    <binary>elsewhere</binary>
+  </provides>
+
+  <url type="homepage">https://github.com/insomniodev/elsewhere</url>
+  <url type="bugtracker">https://github.com/insomniodev/elsewhere/issues</url>
+  <url type="vcs-browser">https://github.com/insomniodev/elsewhere</url>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>The map view, with cities pinned and the night side shaded</caption>
+      <image>https://raw.githubusercontent.com/insomniodev/elsewhere/v1.0.1/docs/map.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The list view</caption>
+      <image>https://raw.githubusercontent.com/insomniodev/elsewhere/v1.0.1/docs/list.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The hour grid, comparing every city hour by hour</caption>
+      <image>https://raw.githubusercontent.com/insomniodev/elsewhere/v1.0.1/docs/grid.png</image>
+    </screenshot>
+  </screenshots>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#89b4fa</color>
+    <color type="primary" scheme_preference="dark">#1e1e2e</color>
+  </branding>
+
+  <content_rating type="oars-1.1"/>
+
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+
+  <releases>
+    <release version="1.0.1" date="2026-11-14">
+      <description>
+        <p>The app ID is now dev.insomnio.elsewhere.</p>
+      </description>
+    </release>
+    <release version="1.0.0" date="2026-11-13"/>
+  </releases>
+</component>

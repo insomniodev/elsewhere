@@ -22,7 +22,7 @@ mod vendor;
 mod zones;
 
 /// Wayland app id and X11 class; `assets/app/<APP_ID>.desktop` is named after it.
-const APP_ID: &str = "io.github.insomniodev.elsewhere";
+const APP_ID: &str = "dev.insomnio.elsewhere";
 
 /// Tall, to suit the list; the map scrolls sideways instead. Under 600 so it
 /// fits a 1200-pixel display at 2x.
