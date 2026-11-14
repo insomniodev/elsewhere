@@ -1,5 +1,5 @@
 use gpui::{
-    Context, FocusHandle, Pixels, SharedString, Window, div, prelude::*, px, rgb, rgba,
+    AnyElement, Context, FocusHandle, Pixels, SharedString, Window, div, prelude::*, px, rgb, rgba,
     transparent_black,
 };
 use jiff::Zoned;
@@ -106,15 +106,9 @@ const BY_CLOCK: Toggle = Toggle {
     tips: ["order by clock", "ordered earliest to latest"],
     click: Elsewhere::toggle_by_clock,
     on: |this| this.by_clock,
-    unavailable: |this| {
-        if this.view == View::Map {
-            Some("no order on a map")
-        } else if this.saved.len() < 2 {
-            Some("add a city first")
-        } else {
-            None
-        }
-    },
+    // Not on the map at all, where there is no order: `render_order` gives
+    // the slot to the fit control.
+    unavailable: |this| (this.saved.len() < 2).then_some("add a city first"),
     focus: |focus| &focus.by_clock,
 };
 
@@ -127,6 +121,13 @@ impl Elsewhere {
     pub(super) fn switch(&mut self, to: View, window: &mut Window, cx: &mut Context<Self>) {
         if self.view == to {
             return;
+        }
+        // The fit and order controls trade places as the map comes and goes;
+        // focus on the one leaving passes to the switch, not out of the window.
+        if (self.focus.fit.is_focused(window) || self.focus.by_clock.is_focused(window))
+            && let Some(i) = VIEWS.iter().position(|segment| segment.view == to)
+        {
+            window.focus(&self.focus.views[i].clone(), cx);
         }
         self.view = to;
         self.grid_cursor = None;
@@ -148,13 +149,13 @@ impl Elsewhere {
     /// places as it changes.
     pub(super) fn footer_stops(&self) -> Vec<FocusHandle> {
         let mut stops = self.focus.views.to_vec();
+        if (FORMAT.unavailable)(self).is_none() {
+            stops.push(self.focus.format.clone());
+        }
         if self.view == View::Map {
             stops.push(self.focus.fit.clone());
-        }
-        for toggle in [&FORMAT, &BY_CLOCK] {
-            if (toggle.unavailable)(self).is_none() {
-                stops.push((toggle.focus)(&self.focus).clone());
-            }
+        } else if (BY_CLOCK.unavailable)(self).is_none() {
+            stops.push(self.focus.by_clock.clone());
         }
         stops
     }
@@ -232,24 +233,22 @@ impl Elsewhere {
             }))
     }
 
-    /// In every view, so the controls never jump, but live only on the map.
-    fn render_fit(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    /// The last slot on the right: centring on the map, where there is no
+    /// order, and ordering everywhere else. One button either way, so the
+    /// format toggle beside it never moves.
+    fn render_order(&self, cx: &mut Context<Self>) -> AnyElement {
+        if self.view != View::Map {
+            return self.render_toggle(&BY_CLOCK, cx).into_any_element();
+        }
         Button::new("fit", "icons/fit.svg", px(14.))
             .focus(self.focus.fit.clone())
-            .disabled(self.view != View::Map)
-            .tooltip(Tooltip::live(cx.entity(), |this| {
-                if this.view == View::Map {
-                    "centre the map on your cities"
-                } else {
-                    "only on a map"
-                }
-                .into()
-            }))
+            .tooltip(Tooltip::text("centre the map on your cities"))
             .on_click(cx.listener(|this, _event, _window, cx| {
                 this.map_frame.set(None);
                 cx.notify();
             }))
             .build()
+            .into_any_element()
     }
 
     /// How to move the time, in the banner's place until one is pinned: the
@@ -401,21 +400,14 @@ impl Elsewhere {
             .items_center()
             .h(FOOTER_HEIGHT)
             .text_xs()
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .gap_1()
-                    .child(self.render_switch(cx))
-                    .child(self.render_fit(cx)),
-            )
+            .child(self.render_switch(cx))
             .child(
                 div()
                     .flex()
                     .flex_row()
                     .gap_1()
                     .child(self.render_toggle(&FORMAT, cx))
-                    .child(self.render_toggle(&BY_CLOCK, cx)),
+                    .child(self.render_order(cx)),
             )
     }
 }
