@@ -272,9 +272,14 @@ impl Elsewhere {
                 .items_center()
                 .h(BANNER_HEIGHT)
                 // The banner's inset and frame, so its label lands on this.
+                // Filled like the view switch, frame included, so the hint
+                // sits in a ghost of the banner's box that lines up with the
+                // controls below rather than floating loose.
                 .px_2()
+                .rounded_md()
                 .border_1()
-                .border_color(transparent_black())
+                .border_color(rgb(theme::MANTLE))
+                .bg(rgb(theme::MANTLE))
                 .text_xs()
                 .text_color(rgb(theme::OVERLAY2))
                 .child(div().min_w_0().truncate().child(hint)),
