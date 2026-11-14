@@ -8,6 +8,9 @@ pub(crate) const MANTLE: u32 = 0x181825;
 pub(crate) const SURFACE0: u32 = 0x313244;
 /// `SURFACE0` at half strength, for hover. Carries alpha, for `rgba()`.
 pub(crate) const WASH: u32 = 0x31324480;
+/// Behind a map label: `BASE` just short of opaque, so the text reads over
+/// land, lines and night alike. Carries alpha, for `rgba()`.
+pub(crate) const CHIP: u32 = 0x1e1e2eeb;
 /// Shade for the night side: Catppuccin crust with alpha, for `rgba()`.
 pub(crate) const NIGHT: u32 = 0x11111b99;
 /// Opaque, so an edge two zones share and both draw reads as one line.

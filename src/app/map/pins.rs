@@ -2,8 +2,8 @@
 //! hover and click like the list's rows do.
 
 use gpui::{
-    AnyElement, Context, ElementId, Font, MouseButton, Pixels, Point, SharedString, Size, TextRun,
-    Window, div, point, prelude::*, px, rems, rgb,
+    AnyElement, Context, ElementId, MouseButton, PathBuilder, Pixels, Point, Rems, Size, canvas,
+    div, point, prelude::*, px, rems, rgb, rgba,
 };
 use jiff::Zoned;
 
@@ -23,8 +23,38 @@ const RADIUS: f32 = 3.5;
 /// What takes the pointer for a dot: far easier to hit than the dot drawn.
 const HIT: Pixels = px(20.);
 
-const LABEL_HEIGHT: f32 = 16.0;
 const LABEL_GAP: f32 = 3.0;
+/// How far from its dot a label may be set, nearest first, when a crowd
+/// leaves no room beside it. Past the last the label is hidden: a longer
+/// leader would be harder to follow than the dot's tooltip is to find.
+const LABEL_REACHES: [f32; 4] = [12.0, 24.0, 36.0, 48.0];
+const LEADER_WIDTH: Pixels = px(1.);
+
+/// A label is a chip: the time on its first line, the name under it and,
+/// for here, the tag under that. The time is the larger, being what is read.
+const TIME_LINE: f32 = 16.0;
+const NAME_LINE: f32 = 14.0;
+const CHIP_PAD_X: f32 = 5.0;
+const CHIP_PAD_Y: f32 = 2.0;
+const CHIP_EDGE: f32 = 1.0;
+/// Every chip's, so they read as one set whatever their names: room for a
+/// long name or a twelve-hour time with its day. A longer name is cut with
+/// an ellipsis; the tooltip has it whole.
+const CHIP_WIDTH: f32 = 90.0;
+
+fn time_size() -> Rems {
+    rems(0.8125)
+}
+
+fn name_size() -> Rems {
+    rems(0.6875)
+}
+
+/// Only here's chip has the third line.
+fn chip_height(home: bool) -> f32 {
+    let lines = TIME_LINE + NAME_LINE + if home { NAME_LINE } else { 0.0 };
+    lines + 2.0 * (CHIP_PAD_Y + CHIP_EDGE)
+}
 
 const PART_GAP: Pixels = px(4.);
 
@@ -45,27 +75,28 @@ struct Marker {
     known: bool,
     /// Here, whether a saved city or the zone's seat.
     home: bool,
-    /// The label's drawn width.
-    width: f32,
 }
 
 impl Elsewhere {
-    /// Labels first, so a dot is never buried under one. Empty until the
-    /// canvas has measured itself.
+    /// Leaders first, then labels, then dots, so a dot is never buried under
+    /// a label nor a label under a line. Empty until the canvas has measured
+    /// itself.
     pub(super) fn render_pins(
         &self,
         saved: &[u32],
         now: &Zoned,
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         let Some(layout) = self.map_layout.get() else {
             return Vec::new();
         };
         let rect = layout.rect;
-        let markers = self.markers(saved, now, rect.size, window);
+        let markers = self.markers(saved, now, rect.size);
         let dots: Vec<(f32, f32)> = markers.iter().map(|m| (m.centre.x, m.centre.y)).collect();
-        let sizes: Vec<(f32, f32)> = markers.iter().map(|m| (m.width, LABEL_HEIGHT)).collect();
+        let sizes: Vec<(f32, f32)> = markers
+            .iter()
+            .map(|m| (CHIP_WIDTH, chip_height(m.home)))
+            .collect();
         // What the viewport shows of the map, so a label keeps clear of its
         // edges rather than of the map's, most of which is scrolled away.
         let left = -f32::from(self.map_scroll.offset().x) - f32::from(rect.origin.x);
@@ -76,12 +107,26 @@ impl Elsewhere {
             w: (left + f32::from(layout.viewport.width)).min(f32::from(rect.size.width)) - shown,
             h: f32::from(rect.size.height),
         };
-        let slots = labels::place(&dots, &sizes, RADIUS, LABEL_GAP, frame);
+        let placed = labels::place(&dots, &sizes, RADIUS, LABEL_GAP, frame, &LABEL_REACHES);
 
         let origin = rect.origin;
-        let mut elements: Vec<AnyElement> = Vec::with_capacity(markers.len() * 2);
-        for (marker, slot) in markers.iter().zip(&slots) {
-            if let Some(slot) = slot {
+        let mut elements: Vec<AnyElement> = Vec::with_capacity(markers.len() * 2 + 1);
+        let leaders: Vec<(Point<Pixels>, Point<Pixels>)> = markers
+            .iter()
+            .zip(&placed)
+            .filter_map(|(marker, placed)| {
+                let (x, y) = placed.as_ref()?.leader?;
+                Some((
+                    origin + point(px(marker.centre.x), px(marker.centre.y)),
+                    origin + point(px(x), px(y)),
+                ))
+            })
+            .collect();
+        if !leaders.is_empty() {
+            elements.push(render_leaders(leaders));
+        }
+        for (marker, placed) in markers.iter().zip(&placed) {
+            if let Some(labels::Placed { slot, .. }) = placed {
                 elements.push(self.render_label(
                     marker,
                     origin + point(px(slot.x), px(slot.y)),
@@ -93,9 +138,9 @@ impl Elsewhere {
                 ));
             }
         }
-        for (marker, slot) in markers.iter().zip(&slots) {
+        for (marker, placed) in markers.iter().zip(&placed) {
             let centre = origin + point(px(marker.centre.x), px(marker.centre.y));
-            elements.push(self.render_dot(marker, centre, slot.is_none(), cx));
+            elements.push(self.render_dot(marker, centre, placed.is_none(), cx));
         }
         elements
     }
@@ -103,27 +148,7 @@ impl Elsewhere {
     /// Order matters: `place` lets earlier markers win, and the saved order is
     /// the one the user arranged. Here's own marker, when no saved city is in
     /// the zone, goes first: it is the reader's place.
-    fn markers(
-        &self,
-        saved: &[u32],
-        now: &Zoned,
-        size: Size<Pixels>,
-        window: &Window,
-    ) -> Vec<Marker> {
-        let text = window.text_style().font();
-        // All of a label is `text_xs`, so it reads as one line and stays small
-        // enough to find room beside its dot.
-        let text_size = rems(0.75).to_pixels(window.rem_size());
-        let mono = match self.mono.clone() {
-            Some(family) => Font {
-                family,
-                ..text.clone()
-            },
-            None => text.clone(),
-        };
-        let gap = f32::from(PART_GAP);
-        let here_width = gap + measure(window, "here", &text, text_size);
-
+    fn markers(&self, saved: &[u32], now: &Zoned, size: Size<Pixels>) -> Vec<Marker> {
         // At the zone's seat, so a zone no saved city is in still gets one;
         // a zone no city keeps has nowhere to go, and the list and grid carry
         // here alone.
@@ -136,10 +161,6 @@ impl Elsewhere {
             .and_then(|geonameid| self.index.city(geonameid))
             .map(|city| {
                 let time = clock::reading(now, &self.here.zone, self.format).time;
-                let width = measure(window, &self.here.name, &text, text_size)
-                    + here_width
-                    + gap
-                    + measure(window, &time, &mono, text_size);
                 Marker {
                     geonameid: None,
                     centre: centre(city.longitude, city.latitude, size),
@@ -149,7 +170,6 @@ impl Elsewhere {
                     day: None,
                     known: true,
                     home: true,
-                    width,
                 }
             });
 
@@ -164,15 +184,6 @@ impl Elsewhere {
             };
             let home = self.here.city == Some(*geonameid);
             let tip = clock::city_detail(&self.index.label(city), zone, now);
-            let mut width = measure(window, &city.name, &text, text_size)
-                + gap
-                + measure(window, &time, &mono, text_size);
-            if home {
-                width += here_width;
-            }
-            if let Some(day) = &day {
-                width += gap + measure(window, day, &text, text_size);
-            }
             Some(Marker {
                 geonameid: Some(*geonameid),
                 centre: centre(city.longitude, city.latitude, size),
@@ -182,7 +193,6 @@ impl Elsewhere {
                 day,
                 known,
                 home,
-                width,
             })
         });
         seat.into_iter().chain(cities).collect()
@@ -274,12 +284,13 @@ impl Elsewhere {
             .into_any_element()
     }
 
-    /// The time opens the same what-if editor a row's does. A saved city's
-    /// label shows its remove button while hovered, at the end away from the
-    /// dot: the start when `leading`, the label lying left of its dot or hard
-    /// against the viewport's right edge. The
-    /// button is no part of the label's placement, so it may lie over a
-    /// neighbour for as long as the hover lasts.
+    /// A chip, its lines kept to the left: the time, then the name and, for
+    /// here, the tag. The time opens the same what-if editor a row's does. A
+    /// saved city's label shows its remove button while hovered, beside the
+    /// chip on the side away from the dot: before it when `leading`, the
+    /// label lying left of its dot or hard against the viewport's right
+    /// edge. The button is no part of the label's placement, so it may lie
+    /// over a neighbour for as long as the hover lasts.
     fn render_label(
         &self,
         marker: &Marker,
@@ -288,45 +299,49 @@ impl Elsewhere {
         now: &Zoned,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let input = self
+            .editing
+            .as_ref()
+            .filter(|(editing, _)| marker.geonameid == Some(*editing))
+            .map(|(_, input)| input);
+        let editing = input.is_some();
+        let editable = marker.geonameid.filter(|_| marker.known);
         let time = marker.time.clone();
-        let cell = |id: ElementId| {
-            div()
-                .id(id)
-                .text_xs()
+        let reading = match input {
+            // Bigger than the time, so the chip grows to hold it for as
+            // long as it is open.
+            Some(input) => self
+                .render_editor(input, cx)
+                .flex_none()
+                .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
+                    cx.stop_propagation()
+                })
+                .into_any_element(),
+            None => div()
+                .id(match marker.geonameid {
+                    Some(geonameid) => ElementId::from(("map-time", geonameid as usize)),
+                    None => ElementId::from("map-time-here"),
+                })
+                .text_size(time_size())
                 .when_some(self.mono.clone(), Styled::font_family)
                 .when_some(
                     self.pinned.as_ref().map(|pin| pin.accent().text),
                     |cell, text| cell.text_color(rgb(text)),
                 )
                 .child(marker.time.clone())
-        };
-        let reading = match marker.geonameid {
-            None => cell(ElementId::from("map-time-here")).into_any_element(),
-            // Taller than the line, so it overhangs rather than moving the
-            // label.
-            Some(geonameid) => match &self.editing {
-                Some((editing, input)) if *editing == geonameid => self
-                    .render_editor(input, cx)
-                    .flex_none()
-                    .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
-                        cx.stop_propagation()
-                    })
-                    .into_any_element(),
-                _ => cell(ElementId::from(("map-time", geonameid as usize)))
-                    .when(marker.known, |cell| {
-                        cell.cursor_pointer()
-                            // A press here edits rather than pans.
-                            .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
-                                cx.stop_propagation()
-                            })
-                            .rounded_sm()
-                            .hover(|style| style.bg(rgb(theme::SURFACE0)))
-                            .on_click(cx.listener(move |this, _event, window, cx| {
-                                this.edit(geonameid, time.clone(), window, cx)
-                            }))
-                    })
-                    .into_any_element(),
-            },
+                .when_some(editable, |cell, geonameid| {
+                    cell.cursor_pointer()
+                        // A press here edits rather than pans.
+                        .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
+                            cx.stop_propagation()
+                        })
+                        .rounded_sm()
+                        .hover(|style| style.bg(rgb(theme::SURFACE0)))
+                        .on_click(cx.listener(move |this, _event, window, cx| {
+                            this.edit(geonameid, time.clone(), window, cx)
+                        }))
+                })
+                .into_any_element(),
         };
         // A press on it removes rather than pans.
         let remove = marker.geonameid.map(|geonameid| {
@@ -345,36 +360,96 @@ impl Elsewhere {
         } else {
             px(0.)
         };
-        div()
-            .group(LABEL_GROUP)
-            .absolute()
-            .left(at.x - inset)
-            .top(at.y)
-            .h(px(LABEL_HEIGHT))
+        let top = div()
             .flex()
             .flex_row()
             .items_center()
             .gap(PART_GAP)
-            .children(before)
+            .line_height(px(TIME_LINE))
+            .child(reading)
+            .children(
+                marker
+                    .day
+                    .clone()
+                    .map(|day| tag(day).text_size(name_size())),
+            );
+        let body = div()
+            .flex()
+            .flex_col()
+            .items_start()
+            .px(px(CHIP_PAD_X))
+            .py(px(CHIP_PAD_Y))
+            .border_1()
+            .border_color(rgb(theme::SURFACE1))
+            .rounded_sm()
+            .bg(rgba(theme::CHIP))
+            .whitespace_nowrap()
+            // The editor may be wider than the chip, never narrower.
+            .min_w(px(CHIP_WIDTH))
+            .when(!editing, |body| {
+                body.w(px(CHIP_WIDTH)).h(px(chip_height(marker.home)))
+            })
+            .child(top)
             .child(
                 div()
                     .id(match marker.geonameid {
                         Some(geonameid) => ElementId::from(("map-name", geonameid as usize)),
                         None => ElementId::from("map-name-here"),
                     })
-                    .text_xs()
+                    .max_w_full()
+                    .truncate()
+                    .text_size(name_size())
+                    .line_height(px(NAME_LINE))
                     .text_color(rgb(theme::SUBTEXT0))
                     .tooltip(Tooltip::text(marker.tip.clone()))
                     .child(marker.name.clone()),
             )
-            .when(marker.home, |label| {
-                label.child(self.here_tag("map-here", now))
-            })
-            .child(reading)
-            .children(marker.day.clone().map(tag))
+            // In the dot's own blue, so the reader's place stands out.
+            .when(marker.home, |body| {
+                body.child(
+                    self.here_tag("map-here", now)
+                        .text_size(name_size())
+                        .line_height(px(NAME_LINE))
+                        .text_color(rgb(theme::BLUE)),
+                )
+            });
+        div()
+            .group(LABEL_GROUP)
+            .absolute()
+            .left(at.x - inset)
+            .top(at.y)
+            .flex()
+            .flex_row()
+            .items_start()
+            .gap(PART_GAP)
+            .children(before)
+            .child(body)
             .children(after)
             .into_any_element()
     }
+}
+
+/// The lines tying the labels set apart from their dots back to them, each
+/// from a dot's centre to its label's edge, in the pins' own coordinates.
+/// Painted, since a div cannot slant; nothing hovers or clicks on them.
+fn render_leaders(leaders: Vec<(Point<Pixels>, Point<Pixels>)>) -> AnyElement {
+    canvas(
+        |_bounds, _window, _cx| {},
+        move |bounds, (), window, _cx| {
+            let mut builder = PathBuilder::stroke(LEADER_WIDTH);
+            for (from, to) in &leaders {
+                builder.move_to(bounds.origin + *from);
+                builder.line_to(bounds.origin + *to);
+            }
+            // A path lyon cannot tessellate is only the lines missing.
+            if let Ok(path) = builder.build() {
+                window.paint_path(path, rgb(theme::OVERLAY2));
+            }
+        },
+    )
+    .absolute()
+    .inset_0()
+    .into_any_element()
 }
 
 fn centre(lon: f64, lat: f64, size: Size<Pixels>) -> Point<f32> {
@@ -383,25 +458,4 @@ fn centre(lon: f64, lat: f64, size: Size<Pixels>) -> Point<f32> {
         f32::from(size.width) * x as f32,
         f32::from(size.height) * y as f32,
     )
-}
-
-/// Labels are placed before layout, so the shaper is asked directly; a guess
-/// from character counts would leave them overlapping.
-fn measure(window: &Window, text: &str, font: &Font, size: Pixels) -> f32 {
-    if text.is_empty() {
-        return 0.0;
-    }
-    let run = TextRun {
-        len: text.len(),
-        font: font.clone(),
-        color: gpui::black(),
-        background_color: None,
-        underline: None,
-        strikethrough: None,
-    };
-    let line =
-        window
-            .text_system()
-            .shape_line(SharedString::from(text.to_string()), size, &[run], None);
-    f32::from(line.width)
 }

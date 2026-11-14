@@ -8,7 +8,7 @@ use std::rc::Rc;
 use gpui::{
     Axis, Bounds, Context, CursorStyle, DispatchPhase, MouseButton, MouseDownEvent, MouseMoveEvent,
     MouseUpEvent, Path, PathBuilder, Pixels, Point, ScrollDelta, ScrollEvent, ScrollHandle, Size,
-    TextAlign, TextRun, Window, canvas, div, fill, point, prelude::*, px, rgb, rgba, size,
+    TextAlign, TextRun, canvas, div, fill, point, prelude::*, px, rgb, rgba, size,
 };
 use jiff::Zoned;
 
@@ -82,7 +82,6 @@ impl Elsewhere {
         saved: &[u32],
         now: &Zoned,
         empty: bool,
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let layout = self.map_layout.get();
@@ -130,7 +129,7 @@ impl Elsewhere {
                             .min_w_full()
                             .when_some(layout, |content, layout| content.w(layout.rect.size.width))
                             .child(self.render_world(now))
-                            .children(self.render_pins(saved, now, window, cx)),
+                            .children(self.render_pins(saved, now, cx)),
                     ),
             )
             .child(pan(self.map_pan.clone(), self.map_scroll.clone()))
