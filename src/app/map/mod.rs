@@ -46,19 +46,11 @@ const NOTCH_PIXELS: f32 = 40.0;
 /// gpui reports a wheel's click as three lines, as desktops scroll text.
 const NOTCH_LINES: f32 = 3.0;
 
-/// Room beside the outermost cities when the map is fitted to them.
-const MARGIN: Pixels = px(16.);
-/// The narrowest span a fit frames, as a share of the world, so one city
-/// shows its region rather than the closest zoom.
-const MIN_SPAN: f32 = 1.0 / 3.0;
-
-/// How far in and where the map looks, kept between fits so that neither a
-/// resize nor the banner reframes it.
+/// Where the map looks, kept between fits so that neither a resize nor the
+/// banner reframes it. The height sets the scale, so a fit only turns the
+/// map to its cities.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct Frame {
-    /// The world's width over the viewport's; a resize keeps the ratio, so
-    /// the same cities stay in view.
-    zoom: f32,
     /// The x to put mid-viewport, as a share of the world's width.
     middle: f32,
 }
@@ -143,7 +135,7 @@ impl Elsewhere {
             )
             .child(pan(self.map_pan.clone(), self.map_scroll.clone()))
             // Along the map's own bottom edge rather than the region's, which
-            // the letterbox may leave far below it.
+            // lies below it while the banner's room is empty.
             .when_some(layout.filter(Layout::overflows), |map, layout| {
                 map.child(
                     div()
@@ -236,12 +228,12 @@ impl Elsewhere {
                 let refit = frame.get().is_none() && viewport.width > px(0.);
                 let framing = match frame.get() {
                     Some(framing) => framing,
-                    None => frame_on(&framed, viewport.width),
+                    None => frame_on(&framed),
                 };
                 if refit {
                     frame.set(Some(framing));
                 }
-                let rect = fit(viewport, framing.zoom, tallest, level);
+                let rect = fit(viewport, tallest, level);
                 let layout = Layout { viewport, rect };
                 let before = remembered.get();
                 if refit || before != Some(layout) {
@@ -326,8 +318,9 @@ impl Elsewhere {
                         (lon, hours, line)
                     })
                     .collect();
-                // A map fitted narrow has too little room for every hour, so
-                // it marks every other one rather than run them together.
+                // A short map is narrow too, with too little room for every
+                // hour, so it marks every other one rather than run them
+                // together.
                 let widest = lines
                     .iter()
                     .map(|(_, _, line)| line.width)
@@ -375,47 +368,29 @@ impl Elsewhere {
     }
 }
 
-/// Frames `xs`, shares of the world's width, across `width` with a margin
-/// either side. Nothing to frame frames the whole world. The map is one
-/// unwrapped world, so cities either side of the date line frame the arc
-/// between them the long way round, as the map draws it.
-fn frame_on(xs: &[f32], width: Pixels) -> Frame {
+/// Centres on `xs`, shares of the world's width: midway between the
+/// outermost. Nothing to frame centres the world. The map is one unwrapped
+/// world, so cities either side of the date line centre the arc between them
+/// the long way round, as the map draws it.
+fn frame_on(xs: &[f32]) -> Frame {
     let west = xs.iter().copied().reduce(f32::min);
     let east = xs.iter().copied().reduce(f32::max);
-    let (Some(west), Some(east)) = (west, east) else {
-        return Frame {
-            zoom: 1.0,
-            middle: 0.5,
-        };
+    let middle = match (west, east) {
+        (Some(west), Some(east)) => (west + east) / 2.0,
+        _ => 0.5,
     };
-    let room = if width > px(0.) {
-        (1.0 - 2.0 * (MARGIN / width)).max(0.0)
-    } else {
-        1.0
-    };
-    Frame {
-        zoom: room / (east - west).max(MIN_SPAN),
-        middle: (west + east) / 2.0,
-    }
+    Frame { middle }
 }
 
-/// The scale comes from the width alone, `zoom` viewports wide, so a change
-/// in height, as the banner or a notice comes and goes, moves only the
-/// letterbox. It never shrinks below the viewport's width, as the whole
-/// world, nor grows past `tallest`, the most height the map may have.
-/// Vertically it centres on `level`, kept inside the viewport; across, it is
-/// centred when narrower than the viewport and flush left for the scroller
-/// when wider.
-pub(super) fn fit(
-    viewport: Size<Pixels>,
-    zoom: f32,
-    tallest: Pixels,
-    level: Pixels,
-) -> Bounds<Pixels> {
-    let aspect = geo::aspect() as f32;
-    let widest = tallest.max(px(1.)) * aspect;
-    let width = (viewport.width * zoom).clamp(viewport.width.min(widest), widest);
-    let height = width / aspect;
+/// The map is always `tallest`, the most height it may have, and as wide as
+/// that makes it, so no window leaves it a strip; a narrow one scrolls it
+/// sideways instead. `tallest` is the same with the banner or a notice up,
+/// so neither rescales it. Vertically it centres on `level`, kept inside the
+/// viewport; across, it is centred when narrower than the viewport and flush
+/// left for the scroller when wider.
+pub(super) fn fit(viewport: Size<Pixels>, tallest: Pixels, level: Pixels) -> Bounds<Pixels> {
+    let height = tallest.max(px(1.));
+    let width = height * geo::aspect() as f32;
     let top = (level - height / 2.).clamp(px(0.), (viewport.height - height).max(px(0.)));
     Bounds::new(
         point(((viewport.width - width) / 2.).max(px(0.)), top),
@@ -529,51 +504,35 @@ mod tests {
     }
 
     #[test]
-    fn frames_the_cities_with_a_margin() {
-        let frame = frame_on(&[0.25, 0.75], px(400.));
-        assert!((frame.middle - 0.5).abs() < 1e-6);
-        // The half the world between them fills all but the margins.
-        let rect = fit(size(px(400.), px(600.)), frame.zoom, px(600.), px(300.));
-        let span = f32::from(rect.size.width) * 0.5;
-        assert!((span - (400. - 2. * 16.)).abs() < 0.01, "{rect:?}");
+    fn centres_midway_between_the_outermost_cities() {
+        assert!((frame_on(&[0.25, 0.4, 0.75]).middle - 0.5).abs() < 1e-6);
+        assert!((frame_on(&[0.4]).middle - 0.4).abs() < 1e-6);
     }
 
     #[test]
-    fn frames_the_world_with_no_cities() {
-        let frame = frame_on(&[], px(400.));
-        let rect = fit(size(px(400.), px(600.)), frame.zoom, px(600.), px(300.));
-        assert!(close(rect.size.width, 400.), "{rect:?}");
-        assert_eq!(rect.origin.x, px(0.));
+    fn centres_the_world_with_no_cities() {
+        assert_eq!(frame_on(&[]).middle, 0.5);
     }
 
     #[test]
-    fn one_city_frames_a_region_not_a_point() {
-        let frame = frame_on(&[0.4], px(400.));
-        assert!(frame.zoom <= 3.0, "{frame:?}");
+    fn fills_the_height_in_a_narrow_window() {
+        let rect = fit(size(px(400.), px(440.)), px(400.), px(200.));
+        assert!(close(rect.size.height, 400.), "{rect:?}");
+        assert!(close(rect.size.width, 400. * (360. / 140.)), "{rect:?}");
+        // Flush left, for the scroller.
+        assert_eq!(rect.origin, point(px(0.), px(0.)));
     }
 
     #[test]
-    fn a_height_change_moves_only_the_letterbox() {
-        let tall = fit(size(px(400.), px(600.)), 2.0, px(500.), px(300.));
-        let short = fit(size(px(400.), px(560.)), 2.0, px(500.), px(300.));
-        assert_eq!(tall.size, short.size);
-        assert!(close(tall.size.width, 800.), "{tall:?}");
-        assert!(
-            close(tall.origin.y + tall.size.height / 2., 300.),
-            "{tall:?} is not centred on its level"
-        );
-    }
-
-    #[test]
-    fn never_grows_past_the_tallest_it_may_be() {
-        let rect = fit(size(px(400.), px(300.)), 10.0, px(200.), px(150.));
-        assert!(close(rect.size.height, 200.), "{rect:?}");
-        assert!(close(rect.size.width, 200. * (360. / 140.)), "{rect:?}");
+    fn a_shorter_viewport_does_not_rescale_it() {
+        let tall = fit(size(px(400.), px(600.)), px(500.), px(250.));
+        let short = fit(size(px(400.), px(560.)), px(500.), px(250.));
+        assert_eq!(tall, short);
     }
 
     #[test]
     fn centres_across_a_window_wider_than_the_tallest_map() {
-        let rect = fit(size(px(800.), px(200.)), 1.0, px(100.), px(100.));
+        let rect = fit(size(px(800.), px(200.)), px(100.), px(100.));
         assert!(close(rect.size.height, 100.), "{rect:?}");
         assert!(
             close(rect.origin.x + rect.size.width / 2., 400.),
@@ -584,7 +543,9 @@ mod tests {
 
     #[test]
     fn stays_inside_the_viewport_when_its_level_is_off_centre() {
-        let rect = fit(size(px(400.), px(300.)), 1.0, px(300.), px(20.));
+        let rect = fit(size(px(400.), px(300.)), px(200.), px(20.));
         assert_eq!(rect.origin.y, px(0.));
+        let rect = fit(size(px(400.), px(300.)), px(200.), px(290.));
+        assert_eq!(rect.origin.y, px(100.));
     }
 }

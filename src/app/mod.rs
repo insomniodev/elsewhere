@@ -171,12 +171,12 @@ pub struct Elsewhere {
     land: Rc<Vec<Vec<geo::LonLat>>>,
     /// Shared for the same reason as `land`.
     zone_borders: Rc<Vec<Vec<geo::LonLat>>>,
-    /// Written by the map canvas in prepaint, the only place the letterbox is
+    /// Written by the map canvas in prepaint, the only place the map's rect is
     /// known, for whatever is laid over the map to read back.
     map_layout: Rc<Cell<Option<map::Layout>>>,
     map_scroll: ScrollHandle,
-    /// The map's zoom and middle, kept between fits. `None` fits it to the
-    /// cities on the next frame. Shared for the same reason as `map_layout`.
+    /// The map's middle, kept between fits. `None` centres it on the cities
+    /// on the next frame. Shared for the same reason as `map_layout`.
     map_frame: Rc<Cell<Option<map::Frame>>>,
     /// A drag on the map's body in progress. Shared with the listeners that
     /// follow the pointer outside the map.

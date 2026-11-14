@@ -130,7 +130,7 @@ impl Elsewhere {
         }
         self.view = to;
         self.grid_cursor = None;
-        // The map opens framed on the cities, wherever it was left.
+        // The map opens centred on the cities, wherever it was left.
         if to == View::Map {
             self.map_frame.set(None);
         }
@@ -239,7 +239,7 @@ impl Elsewhere {
             .disabled(self.view != View::Map)
             .tooltip(Tooltip::live(cx.entity(), |this| {
                 if this.view == View::Map {
-                    "fit the map to your cities"
+                    "centre the map on your cities"
                 } else {
                     "only on a map"
                 }
