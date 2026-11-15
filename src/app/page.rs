@@ -26,7 +26,6 @@ const THEMES: [(Mode, &str); 3] = [
 ];
 
 const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
-const LICENSE: &str = include_str!("../../license.md");
 
 impl Elsewhere {
     pub(super) fn open_page(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {
@@ -166,25 +165,18 @@ impl Elsewhere {
                         .flex()
                         .flex_col()
                         .gap_1()
-                        .child(
-                            div()
-                                .flex()
-                                .flex_row()
-                                .items_baseline()
-                                .gap_2()
-                                .child("elsewhere")
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(rgb(theme::palette().text_faint))
-                                        .child(format!("version {version}")),
-                                ),
-                        )
+                        .child("elsewhere")
                         .child(
                             div()
                                 .text_sm()
                                 .text_color(rgb(theme::palette().text_muted))
                                 .child(env!("CARGO_PKG_DESCRIPTION").to_lowercase()),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(rgb(theme::palette().text_faint))
+                                .child(format!("version {version}")),
                         ),
                 )
                 .child(link(
@@ -193,18 +185,6 @@ impl Elsewhere {
                     REPOSITORY.into(),
                     &self.focus.repository,
                 ))
-                .into_any_element(),
-            section("license")
-                .child(
-                    div()
-                        .px_2()
-                        .flex()
-                        .flex_col()
-                        .gap_2()
-                        .text_xs()
-                        .text_color(rgb(theme::palette().text_muted))
-                        .children(paragraphs(LICENSE).map(|p| div().child(p))),
-                )
                 .child(link(
                     "third-party",
                     "third-party licenses",
@@ -376,26 +356,4 @@ fn link(
             .on_click(move |_event, _window, cx| cx.open_url(&url))
             .child(format!("{label} ↗")),
     )
-}
-
-/// The license as written is wrapped for a terminal; each paragraph rejoined
-/// so it wraps to the window instead.
-fn paragraphs(text: &str) -> impl Iterator<Item = String> + '_ {
-    text.split("\n\n")
-        .map(|p| p.split_whitespace().collect::<Vec<_>>().join(" "))
-        .filter(|p| !p.is_empty())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_license_rejoins_into_paragraphs() {
-        let text = "MIT License\n\nline one\nline two\n\n\nlast\n";
-        assert_eq!(
-            paragraphs(text).collect::<Vec<_>>(),
-            ["MIT License", "line one line two", "last"]
-        );
-    }
 }
