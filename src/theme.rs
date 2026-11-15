@@ -150,6 +150,64 @@ pub(crate) fn show(mode: Mode, system: WindowAppearance) {
     LIGHT_ON.store(is_light(mode, system), Ordering::Relaxed);
 }
 
+/// The desktop's light or dark preference, given gpui's. On Linux gpui
+/// starts out light and redraws on that until the desktop portal answers, so
+/// a dark desktop would flash light. The portal is asked here up front, and
+/// its answer stands until gpui's agrees.
+pub(crate) fn desktop(gpui: WindowAppearance) -> WindowAppearance {
+    #[cfg(target_os = "linux")]
+    if !CAUGHT_UP.load(Ordering::Relaxed) {
+        if let Some(early) = *EARLY.get_or_init(portal::color_scheme)
+            && is_light(Mode::System, early) != is_light(Mode::System, gpui)
+        {
+            return early;
+        }
+        CAUGHT_UP.store(true, Ordering::Relaxed);
+    }
+    gpui
+}
+
+#[cfg(target_os = "linux")]
+static EARLY: std::sync::OnceLock<Option<WindowAppearance>> = std::sync::OnceLock::new();
+
+#[cfg(target_os = "linux")]
+static CAUGHT_UP: AtomicBool = AtomicBool::new(false);
+
+#[cfg(target_os = "linux")]
+mod portal {
+    use std::time::Duration;
+
+    use gpui::WindowAppearance;
+    use zbus::zvariant::OwnedValue;
+
+    /// Long enough for a running portal, short enough not to hold up the
+    /// window when none answers.
+    const TIMEOUT: Duration = Duration::from_millis(250);
+
+    pub(super) fn color_scheme() -> Option<WindowAppearance> {
+        let connection = zbus::blocking::connection::Builder::session()
+            .ok()?
+            .method_timeout(TIMEOUT)
+            .build()
+            .ok()?;
+        let reply = connection
+            .call_method(
+                Some("org.freedesktop.portal.Desktop"),
+                "/org/freedesktop/portal/desktop",
+                Some("org.freedesktop.portal.Settings"),
+                "ReadOne",
+                &("org.freedesktop.appearance", "color-scheme"),
+            )
+            .ok()?;
+        let value: OwnedValue = reply.body().deserialize().ok()?;
+        // 1 prefers dark; 0 (no preference) and 2 read as light, as in gpui.
+        Some(match u32::try_from(value).ok()? {
+            1 => WindowAppearance::Dark,
+            _ => WindowAppearance::Light,
+        })
+    }
+}
+
 fn is_light(mode: Mode, system: WindowAppearance) -> bool {
     match mode {
         Mode::System => matches!(

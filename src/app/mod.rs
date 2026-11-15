@@ -257,12 +257,11 @@ impl Elsewhere {
 
         let here = here::locate(&index, &saved, Zoned::now().time_zone().clone(), None);
 
-        // Before the first frame. On Linux the desktop portal may answer only
-        // after the window opens; the observer then switches.
+        // Before the first frame, and on every change after.
         cx.set_window_appearance(settings.theme.appearance());
-        theme::show(settings.theme, window.appearance());
+        theme::show(settings.theme, theme::desktop(window.appearance()));
         let appearance = cx.observe_window_appearance(window, |this, window, _| {
-            theme::show(this.theme, window.appearance());
+            theme::show(this.theme, theme::desktop(window.appearance()));
             // The palette is read while rendering, so every view redraws.
             window.refresh();
         });

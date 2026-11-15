@@ -16,6 +16,10 @@ gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "27bbbc1c
 jiff = "0.2"
 unicode-segmentation = "1"
 
+# Reads the desktop's light or dark preference before the first frame.
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = { version = "5", default-features = false, features = ["async-io", "blocking-api"] }
+
 # Embeds the app icon in the .exe (build.rs).
 [target.'cfg(windows)'.build-dependencies]
 embed-resource = "3"

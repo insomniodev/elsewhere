@@ -62,7 +62,7 @@ impl Elsewhere {
     fn set_theme(&mut self, mode: Mode, window: &mut Window, cx: &mut Context<Self>) {
         self.theme = mode;
         cx.set_window_appearance(mode.appearance());
-        theme::show(mode, window.appearance());
+        theme::show(mode, theme::desktop(window.appearance()));
         // The palette is read while rendering, so every view redraws.
         window.refresh();
         self.persist_settings(window, cx);
