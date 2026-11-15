@@ -37,14 +37,16 @@ pub(super) fn tag(text: impl Into<SharedString>) -> Div {
     div()
         .flex_none()
         .text_xs()
-        .text_color(rgb(theme::TEXT_FAINT))
+        .text_color(rgb(theme::palette().text_faint))
         .child(text.into())
 }
 
 /// Shown by every view while nothing is saved. The list sets it in a row's
 /// place; the others lay it over their content with `hint_over`.
 pub(super) fn hint() -> Div {
-    div().text_color(rgb(theme::TEXT_FAINT)).child(HINT)
+    div()
+        .text_color(rgb(theme::palette().text_faint))
+        .child(HINT)
 }
 
 /// `hint` centred in whatever absolute box the caller gives it, on a `BG`
@@ -61,7 +63,7 @@ pub(super) fn hint_over(area: Div) -> Div {
                 .px_2()
                 .py_1()
                 .rounded_md()
-                .bg(rgb(theme::BG)),
+                .bg(rgb(theme::palette().bg)),
         )
 }
 
@@ -84,7 +86,7 @@ impl Elsewhere {
     /// out.
     pub(super) fn here_tag(&self, id: &'static str, now: &Zoned) -> Stateful<Div> {
         tag("here")
-            .text_color(rgb(theme::BLUE))
+            .text_color(rgb(theme::palette().blue))
             .id(id)
             .tooltip(Tooltip::text(self.here_detail(now)))
     }

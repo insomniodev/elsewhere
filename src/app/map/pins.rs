@@ -235,19 +235,19 @@ impl Elsewhere {
                     .w(DOT)
                     .h(DOT)
                     .rounded_full()
-                    .bg(rgb(theme::BLUE))
+                    .bg(rgb(theme::palette().blue))
                     .when(marker.home, |dot| {
-                        dot.bg(rgb(theme::BG))
+                        dot.bg(rgb(theme::palette().bg))
                             .border(px(1.5))
-                            .border_color(rgb(theme::BLUE))
+                            .border_color(rgb(theme::palette().blue))
                     })
                     // Lit as the list's row is washed, for a city just picked
                     // or restored.
                     .when(
                         marker.geonameid.is_some() && self.revealed == marker.geonameid,
-                        |dot| dot.bg(rgb(theme::TEXT)),
+                        |dot| dot.bg(rgb(theme::palette().text)),
                     )
-                    .group_hover("dot", |style| style.bg(rgb(theme::TEXT))),
+                    .group_hover("dot", |style| style.bg(rgb(theme::palette().text))),
             );
         // Here's marker does not edit, so a press on it pans.
         let Some(geonameid) = marker.geonameid else {
@@ -269,7 +269,9 @@ impl Elsewhere {
             })
             .key_context("Row")
             .when(focused, |dot| {
-                dot.rounded_full().border_1().border_color(rgb(theme::BLUE))
+                dot.rounded_full()
+                    .border_1()
+                    .border_color(rgb(theme::palette().blue))
             })
             .on_action(
                 cx.listener(move |this, _: &Remove, window, cx| this.delete(geonameid, window, cx)),
@@ -336,7 +338,7 @@ impl Elsewhere {
                             cx.stop_propagation()
                         })
                         .rounded_sm()
-                        .hover(|style| style.bg(rgb(theme::SURFACE)))
+                        .hover(|style| style.bg(rgb(theme::palette().surface)))
                         .on_click(cx.listener(move |this, _event, window, cx| {
                             this.edit(geonameid, time.clone(), window, cx)
                         }))
@@ -380,9 +382,9 @@ impl Elsewhere {
             .px(px(CHIP_PAD_X))
             .py(px(CHIP_PAD_Y))
             .border_1()
-            .border_color(rgb(theme::SURFACE_STRONG))
+            .border_color(rgb(theme::palette().surface_strong))
             .rounded_sm()
-            .bg(rgba(theme::CHIP))
+            .bg(rgba(theme::palette().chip))
             .whitespace_nowrap()
             // The editor may be wider than the chip, never narrower.
             .min_w(px(CHIP_WIDTH))
@@ -400,7 +402,7 @@ impl Elsewhere {
                     .truncate()
                     .text_size(name_size())
                     .line_height(px(NAME_LINE))
-                    .text_color(rgb(theme::TEXT_MUTED))
+                    .text_color(rgb(theme::palette().text_muted))
                     .tooltip(Tooltip::text(marker.tip.clone()))
                     .child(marker.name.clone()),
             )
@@ -441,7 +443,7 @@ fn render_leaders(leaders: Vec<(Point<Pixels>, Point<Pixels>)>) -> AnyElement {
             }
             // A path lyon cannot tessellate is only the lines missing.
             if let Ok(path) = builder.build() {
-                window.paint_path(path, rgb(theme::TEXT_FAINT));
+                window.paint_path(path, rgb(theme::palette().text_faint));
             }
         },
     )

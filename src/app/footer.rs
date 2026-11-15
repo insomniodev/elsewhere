@@ -212,7 +212,7 @@ impl Elsewhere {
             .flex()
             .flex_row()
             .rounded_md()
-            .bg(rgb(theme::PANEL))
+            .bg(rgb(theme::palette().panel))
             .children(VIEWS.iter().zip(&self.focus.views).map(|(segment, focus)| {
                 let Segment {
                     view,
@@ -225,7 +225,7 @@ impl Elsewhere {
                     .focus(focus.clone())
                     .on(self.view == view)
                     .current(self.view == view)
-                    .wash(rgba(theme::WASH))
+                    .wash(rgba(theme::palette().wash))
                     .tooltip(Tooltip::live(cx.entity(), move |this| {
                         let tip = tips[(this.view == view) as usize];
                         SharedString::from(format!("{tip} · {MODIFIER}+{key}"))
@@ -281,10 +281,10 @@ impl Elsewhere {
                 .px_2()
                 .rounded_md()
                 .border_1()
-                .border_color(rgb(theme::PANEL))
-                .bg(rgb(theme::PANEL))
+                .border_color(rgb(theme::palette().panel))
+                .bg(rgb(theme::palette().panel))
                 .text_xs()
-                .text_color(rgb(theme::TEXT_FAINT))
+                .text_color(rgb(theme::palette().text_faint))
                 .child(div().min_w_0().truncate().child(hint)),
         )
     }
@@ -358,7 +358,7 @@ impl Elsewhere {
                                     live.style().flex_shrink = Some(1000.);
                                     live
                                 })
-                                .text_color(rgb(theme::TEXT_MUTED))
+                                .text_color(rgb(theme::palette().text_muted))
                                 .child(format!("· now {live}")),
                         ),
                 )
@@ -380,16 +380,20 @@ impl Elsewhere {
                                     // takes no room.
                                     .border_1()
                                     .border_color(transparent_black())
-                                    .focus(|style| style.border_color(rgb(theme::BLUE)))
+                                    .focus(|style| style.border_color(rgb(theme::palette().blue)))
                                     .cursor_pointer()
-                                    .hover(|style| style.bg(rgb(theme::SURFACE))),
+                                    .hover(|style| style.bg(rgb(theme::palette().surface))),
                             )
                             .on_click(
                                 cx.listener(|this, _event, window, cx| this.unpin(window, cx)),
                             )
                             .child("back to now"),
                         )
-                        .child(div().text_color(rgb(theme::TEXT_FAINT)).child(keys)),
+                        .child(
+                            div()
+                                .text_color(rgb(theme::palette().text_faint))
+                                .child(keys),
+                        ),
                 ),
         )
     }

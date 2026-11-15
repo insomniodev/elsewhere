@@ -197,9 +197,9 @@ impl Render for SearchPicker {
                             .mt_1()
                             .p_1()
                             .rounded_md()
-                            .bg(rgb(theme::PANEL))
+                            .bg(rgb(theme::palette().panel))
                             .border_1()
-                            .border_color(rgb(theme::SURFACE))
+                            .border_color(rgb(theme::palette().surface))
                             .shadow_lg()
                             .on_mouse_down_out(cx.listener(
                                 |this, event: &MouseDownEvent, _window, cx| {
@@ -223,7 +223,7 @@ impl Render for SearchPicker {
                                         div().px_2().py_1().child("No cities found").child(
                                             div()
                                                 .text_sm()
-                                                .text_color(rgb(theme::TEXT_FAINT))
+                                                .text_color(rgb(theme::palette().text_faint))
                                                 .child(
                                                     "Try the city's name alone, or add a \
                                                      region or country after a comma.",
@@ -251,9 +251,11 @@ impl Render for SearchPicker {
                                                     .gap_2()
                                                     .cursor_pointer()
                                                     .when(i == self.selected, |row| {
-                                                        row.bg(rgb(theme::SURFACE))
+                                                        row.bg(rgb(theme::palette().surface))
                                                     })
-                                                    .hover(|style| style.bg(rgb(theme::SURFACE)))
+                                                    .hover(|style| {
+                                                        style.bg(rgb(theme::palette().surface))
+                                                    })
                                                     .active(|style| style.opacity(0.8))
                                                     .on_click(cx.listener({
                                                         let geonameid = *geonameid;

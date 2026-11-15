@@ -547,7 +547,10 @@ impl Element for TextElement {
         let style = window.text_style();
 
         let (display_text, text_color) = if content.is_empty() {
-            (input.placeholder.clone(), rgb(theme::TEXT_FAINT).into())
+            (
+                input.placeholder.clone(),
+                rgb(theme::palette().text_faint).into(),
+            )
         } else {
             (content, style.color)
         };
@@ -601,7 +604,7 @@ impl Element for TextElement {
                         point(bounds.left() + cursor_pos, bounds.top()),
                         size(px(2.), bounds.bottom() - bounds.top()),
                     ),
-                    rgb(theme::BLUE),
+                    rgb(theme::palette().blue),
                 )),
             )
         } else {
@@ -617,7 +620,7 @@ impl Element for TextElement {
                             bounds.bottom(),
                         ),
                     ),
-                    rgba(theme::SELECTION),
+                    rgba(theme::palette().selection),
                 )),
                 None,
             )
@@ -696,7 +699,7 @@ impl Render for TextInput {
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .w_full()
-            .bg(rgb(theme::SURFACE))
+            .bg(rgb(theme::palette().surface))
             .rounded_md()
             .line_height(px(24.))
             .text_size(px(16.))

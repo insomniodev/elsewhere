@@ -119,16 +119,17 @@ impl Pin {
 
     /// Typed and scrubbed times differ in color so they read apart at a glance.
     pub(crate) fn accent(&self) -> Accent {
+        let palette = theme::palette();
         match self.anchor {
             Some(_) => Accent {
-                text: theme::YELLOW,
-                tint: theme::YELLOW_TINT,
-                edge: theme::YELLOW_EDGE,
+                text: palette.yellow,
+                tint: palette.yellow_tint,
+                edge: palette.yellow_edge,
             },
             None => Accent {
-                text: theme::PURPLE,
-                tint: theme::PURPLE_TINT,
-                edge: theme::PURPLE_EDGE,
+                text: palette.purple,
+                tint: palette.purple_tint,
+                edge: palette.purple_edge,
             },
         }
     }
@@ -579,8 +580,8 @@ impl Render for Elsewhere {
             .gap(GAP)
             .px_4()
             .pb(PAD_BOTTOM)
-            .bg(rgb(theme::BG))
-            .text_color(rgb(theme::TEXT))
+            .bg(rgb(theme::palette().bg))
+            .text_color(rgb(theme::palette().text))
             // The title bar sits in what would be the top padding.
             .map(|root| {
                 if system_frame {

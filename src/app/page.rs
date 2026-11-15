@@ -92,7 +92,7 @@ impl Elsewhere {
                                 .size(px(16.))
                                 // The glyph starts a few pixels into its box.
                                 .ml(px(-3.))
-                                .text_color(rgb(theme::TEXT_FAINT)),
+                                .text_color(rgb(theme::palette().text_faint)),
                         )
                         .child(div().text_sm().child("go back")),
                 ),
@@ -155,14 +155,14 @@ impl Elsewhere {
                                 .child(
                                     div()
                                         .text_xs()
-                                        .text_color(rgb(theme::TEXT_FAINT))
+                                        .text_color(rgb(theme::palette().text_faint))
                                         .child(format!("version {version}")),
                                 ),
                         )
                         .child(
                             div()
                                 .text_sm()
-                                .text_color(rgb(theme::TEXT_MUTED))
+                                .text_color(rgb(theme::palette().text_muted))
                                 .child(env!("CARGO_PKG_DESCRIPTION").to_lowercase()),
                         ),
                 )
@@ -181,7 +181,7 @@ impl Elsewhere {
                         .flex_col()
                         .gap_2()
                         .text_xs()
-                        .text_color(rgb(theme::TEXT_MUTED))
+                        .text_color(rgb(theme::palette().text_muted))
                         .children(paragraphs(LICENSE).map(|p| div().child(p))),
                 )
                 .child(link(
@@ -195,7 +195,7 @@ impl Elsewhere {
         let mut page = div().flex().flex_col().gap_4().pb_2();
         for (i, group) in groups.enumerate() {
             if i > 0 {
-                page = page.child(div().h(px(1.)).bg(rgb(theme::SURFACE)));
+                page = page.child(div().h(px(1.)).bg(rgb(theme::palette().surface)));
             }
             page = page.child(group);
         }
@@ -231,7 +231,7 @@ impl Elsewhere {
                     .child(
                         div()
                             .text_xs()
-                            .text_color(rgb(theme::TEXT_FAINT))
+                            .text_color(rgb(theme::palette().text_faint))
                             .child(detail),
                     ),
             )
@@ -249,9 +249,9 @@ fn framed(element: Stateful<Div>) -> Stateful<Div> {
             .rounded_md()
             .border_1()
             .border_color(transparent_black())
-            .focus(|style| style.border_color(rgb(theme::BLUE)))
+            .focus(|style| style.border_color(rgb(theme::palette().blue)))
             .cursor_pointer()
-            .hover(|style| style.bg(rgb(theme::SURFACE))),
+            .hover(|style| style.bg(rgb(theme::palette().surface))),
     )
 }
 
@@ -261,7 +261,7 @@ fn section(title: &'static str) -> Div {
         div()
             .px_2()
             .text_xs()
-            .text_color(rgb(theme::TEXT_FAINT))
+            .text_color(rgb(theme::palette().text_faint))
             .child(title),
     )
 }
@@ -277,15 +277,15 @@ fn switch(on: bool) -> impl IntoElement {
         .p(px(2.))
         .rounded_full()
         .bg(rgb(if on {
-            theme::BLUE
+            theme::palette().blue
         } else {
-            theme::SURFACE_STRONG
+            theme::palette().surface_strong
         }))
         .when(on, |track| track.justify_end())
         .child(div().size(px(12.)).rounded_full().bg(rgb(if on {
-            theme::BG
+            theme::palette().bg
         } else {
-            theme::TEXT_FAINT
+            theme::palette().text_faint
         })))
 }
 
@@ -300,7 +300,7 @@ fn link(
         framed(div().id(id).track_focus(focus))
             .py_0p5()
             .text_sm()
-            .text_color(rgb(theme::BLUE))
+            .text_color(rgb(theme::palette().blue))
             .on_click(move |_event, _window, cx| cx.open_url(&url))
             .child(format!("{label} ↗")),
     )

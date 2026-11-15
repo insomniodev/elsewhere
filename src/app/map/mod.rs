@@ -272,18 +272,18 @@ impl Elsewhere {
 
                 for ring in land.iter() {
                     if let Some(path) = polygon(ring.iter().copied().map(at)) {
-                        window.paint_path(path, rgb(theme::SURFACE));
+                        window.paint_path(path, rgb(theme::palette().surface));
                     }
                 }
 
                 for border in zones.iter() {
                     if let Some(path) = polyline(border.iter().copied().map(at)) {
-                        window.paint_path(path, rgb(theme::ZONE_LINE));
+                        window.paint_path(path, rgb(theme::palette().zone_line));
                     }
                 }
 
                 if let Some(path) = polygon(geo::night(sun, NIGHT_STEP).into_iter().map(at)) {
-                    window.paint_path(path, rgba(theme::NIGHT));
+                    window.paint_path(path, rgba(theme::palette().night));
                 }
 
                 let mut lon = -180.0;
@@ -291,7 +291,7 @@ impl Elsewhere {
                     let x = at(LonLat { lon, lat: 0.0 }).x;
                     window.paint_quad(fill(
                         Bounds::new(point(x - px(0.5), rect.bottom() - TICK), size(px(1.), TICK)),
-                        rgb(theme::SURFACE_STRONG),
+                        rgb(theme::palette().surface_strong),
                     ));
                     lon += MERIDIAN_STEP;
                 }
@@ -305,7 +305,10 @@ impl Elsewhere {
                         let run = TextRun {
                             len: text.len(),
                             font: font.clone(),
-                            color: rgb(theme::TEXT_FAINT).into(),
+                            // Muted rather than faint: the night shade is
+                            // painted over them, and on light it drops faint
+                            // below 4.5:1.
+                            color: rgb(theme::palette().text_muted).into(),
                             background_color: None,
                             underline: None,
                             strikethrough: None,
@@ -353,12 +356,12 @@ impl Elsewhere {
                                 point(centre.x - SUN_RADIUS, centre.y - SUN_RADIUS),
                                 size(SUN_RADIUS * 2., SUN_RADIUS * 2.),
                             ),
-                            rgb(theme::YELLOW),
+                            rgb(theme::palette().sun),
                         )
                         .corner_radii(SUN_RADIUS),
                     );
                     if let Some(path) = rays(centre) {
-                        window.paint_path(path, rgb(theme::YELLOW));
+                        window.paint_path(path, rgb(theme::palette().sun));
                     }
                 }
             },

@@ -309,10 +309,10 @@ impl Elsewhere {
                         .right_0()
                         .px_1()
                         .rounded_sm()
-                        .bg(rgb(theme::BG))
+                        .bg(rgb(theme::palette().bg))
                         .whitespace_nowrap()
                         .text_xs()
-                        .text_color(rgb(theme::RED))
+                        .text_color(rgb(theme::palette().red))
                         .child("try 9:30 pm or 21:30"),
                 ))
             })
@@ -391,7 +391,7 @@ impl Elsewhere {
                     .id(id)
                     .min_w_0()
                     .truncate()
-                    .text_color(rgb(theme::TEXT_MUTED))
+                    .text_color(rgb(theme::palette().text_muted))
                     .tooltip(Tooltip::text(detail))
                     .child(name),
             )
@@ -428,7 +428,9 @@ impl Elsewhere {
         // The first row wears it transparent, so a drop before it has a line
         // to show. No inset at the list's ends, with nothing to space from.
         let target = drop_target(div(), !self.by_clock)
-            .when(!first, |row| row.border_color(rgb(theme::SURFACE)))
+            .when(!first, |row| {
+                row.border_color(rgb(theme::palette().surface))
+            })
             .py(GAP)
             .when(first, |row| row.pt_0())
             .when(last, |row| row.pb_0())
@@ -471,7 +473,7 @@ impl Elsewhere {
                     // its remove button and as a drag handle, so only the time
                     // and the button take a pointer cursor. The name's tooltip
                     // says what the row is.
-                    .hover(|style| style.bg(rgba(theme::WASH)))
+                    .hover(|style| style.bg(rgba(theme::palette().wash)))
                     // As the wash does, which a key press does not lift.
                     .hover_listener_mode(HoverListenerMode::InputModalityIndependent)
                     .on_hover(cx.listener(move |this, hovered: &bool, _window, cx| {
@@ -483,7 +485,7 @@ impl Elsewhere {
                         cx.notify();
                     }))
                     .when(self.revealed == Some(geonameid), |row| {
-                        row.bg(rgba(theme::WASH))
+                        row.bg(rgba(theme::palette().wash))
                     })
                     // The whole row is the handle; there is no grip.
                     .when(!self.by_clock, |row| {
@@ -546,7 +548,9 @@ impl Elsewhere {
                                             )
                                             .when(known, |cell| {
                                                 cell.cursor_pointer()
-                                                    .hover(|style| style.bg(rgb(theme::SURFACE)))
+                                                    .hover(|style| {
+                                                        style.bg(rgb(theme::palette().surface))
+                                                    })
                                                     .on_click(cx.listener({
                                                         let time = time.clone();
                                                         move |this, _event, window, cx| {
@@ -592,8 +596,8 @@ impl Elsewhere {
             .child(
                 Button::new("remove", "icons/x.svg", px(12.))
                     .key(geonameid as usize)
-                    .rest(theme::TEXT_MUTED)
-                    .hover(theme::RED)
+                    .rest(theme::palette().text_muted)
+                    .hover(theme::palette().red)
                     .tooltip(Tooltip::text("remove"))
                     .on_click(cx.listener(move |this, _event, window, cx| {
                         this.delete(geonameid, window, cx)
@@ -624,8 +628,8 @@ impl Elsewhere {
     ) -> Stateful<Div> {
         Button::new("remove", "icons/x.svg", px(8.))
             .key(geonameid as usize)
-            .rest(theme::TEXT_MUTED)
-            .hover(theme::RED)
+            .rest(theme::palette().text_muted)
+            .hover(theme::palette().red)
             .tooltip(Tooltip::text("remove"))
             .on_click(
                 cx.listener(move |this, _event, window, cx| this.delete(geonameid, window, cx)),

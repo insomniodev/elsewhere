@@ -19,8 +19,8 @@ impl Render for DragRow {
             .px_2()
             .py_1()
             .rounded_md()
-            .bg(rgb(theme::PANEL))
-            .text_color(rgb(theme::TEXT_MUTED))
+            .bg(rgb(theme::palette().panel))
+            .text_color(rgb(theme::palette().text_muted))
             .opacity(0.9)
             .shadow_md()
             .child(self.label.clone())
@@ -35,7 +35,9 @@ pub(super) fn drop_target(element: Div, open: bool) -> Div {
         .border_t_1()
         .border_color(transparent_black())
         .when(open, |element| {
-            element.drag_over::<DragRow>(|style, _, _, _| style.border_color(rgb(theme::BLUE)))
+            element.drag_over::<DragRow>(|style, _, _, _| {
+                style.border_color(rgb(theme::palette().blue))
+            })
         })
 }
 

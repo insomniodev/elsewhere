@@ -94,8 +94,8 @@ impl Elsewhere {
             let run = run.clone();
             Button::label("notice-action", label.clone())
                 .focus(self.focus.notice_action.clone())
-                .rest(theme::TEXT)
-                .wash(rgb(theme::SURFACE_STRONG))
+                .rest(theme::palette().text)
+                .wash(rgb(theme::palette().surface_strong))
                 .on_click(cx.listener(move |this, _event, window, cx| {
                     this.dismiss_notice(cx);
                     run(this, window, cx);
@@ -113,11 +113,11 @@ impl Elsewhere {
                 .pl_2()
                 .pr_0p5()
                 .rounded_md()
-                .bg(rgb(theme::SURFACE))
+                .bg(rgb(theme::palette().surface))
                 // A stripe rather than a frame: enough to tell a failure
                 // without shouting over the list.
                 .when(failure, |bar| {
-                    bar.border_l_2().border_color(rgb(theme::RED))
+                    bar.border_l_2().border_color(rgb(theme::palette().red))
                 })
                 .text_xs()
                 .child(
@@ -126,9 +126,9 @@ impl Elsewhere {
                         .min_w_0()
                         .line_clamp(3)
                         .text_color(rgb(if failure {
-                            theme::TEXT
+                            theme::palette().text
                         } else {
-                            theme::TEXT_MUTED
+                            theme::palette().text_muted
                         }))
                         .child(notice.text.clone()),
                 )
@@ -136,9 +136,9 @@ impl Elsewhere {
                 .child(
                     Button::new("notice-dismiss", "icons/x.svg", px(12.))
                         .focus(self.focus.notice_dismiss.clone())
-                        .rest(theme::TEXT_MUTED)
-                        .hover(theme::TEXT)
-                        .wash(rgb(theme::SURFACE_STRONG))
+                        .rest(theme::palette().text_muted)
+                        .hover(theme::palette().text)
+                        .wash(rgb(theme::palette().surface_strong))
                         .tooltip(Tooltip::text("dismiss"))
                         .on_click(cx.listener(|this, _event, _window, cx| this.dismiss_notice(cx)))
                         .build(),

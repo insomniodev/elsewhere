@@ -272,7 +272,7 @@ impl Elsewhere {
         let color = self
             .pinned
             .as_ref()
-            .map_or(theme::TEXT_MUTED, |pin| pin.accent().text);
+            .map_or(theme::palette().text_muted, |pin| pin.accent().text);
         div()
             .absolute()
             .top_0()
@@ -309,7 +309,7 @@ impl Elsewhere {
                 now_band(*hours)
                     .flex()
                     .items_center()
-                    .child(div().w_full().h(px(1.)).bg(rgba(theme::NOW_LINE)))
+                    .child(div().w_full().h(px(1.)).bg(rgba(theme::palette().now_line)))
             }))
             .children(
                 columns
@@ -346,7 +346,7 @@ impl Elsewhere {
             .min_w(COLUMN)
             .pb(ROW / 2.)
             .border_r_1()
-            .border_color(rgb(theme::SURFACE))
+            .border_color(rgb(theme::palette().surface))
             .flex()
             .flex_col()
             .children((0..day.rows()).map(|i| {
@@ -386,7 +386,7 @@ impl Elsewhere {
             .gap(TAG_GAP)
             .pl(INSET)
             .text_size(LABEL)
-            .text_color(rgb(theme::TEXT_FAINT))
+            .text_color(rgb(theme::palette().text_faint))
             .when(column.cursor == Some(i), |slot| slot.child(ring()));
         let Some(zone) = &column.zone else {
             return slot;
@@ -399,7 +399,7 @@ impl Elsewhere {
         let bright = self
             .pinned
             .as_ref()
-            .map_or(theme::TEXT, |pin| pin.accent().text);
+            .map_or(theme::palette().text, |pin| pin.accent().text);
         let slot = slot
             .when(shown.is_some(), |slot| slot.text_color(rgb(bright)))
             .children(begins.map(|date| {
@@ -409,13 +409,13 @@ impl Elsewhere {
                     .left_0()
                     .right_0()
                     .h(RULE)
-                    .bg(rgb(theme::SURFACE_STRONG))
+                    .bg(rgb(theme::palette().surface_strong))
                     .child(
                         div()
                             .absolute()
                             .top(RULE)
                             .left(INSET)
-                            .text_color(rgb(theme::TEXT_MUTED))
+                            .text_color(rgb(theme::palette().text_muted))
                             .line_height(DAY_LINE)
                             .child(clock::day_label(date)),
                     )
@@ -446,7 +446,7 @@ impl Elsewhere {
         };
         slot.cursor_pointer()
             .when(shown.is_none(), |slot| {
-                slot.hover(|style| style.text_color(rgb(theme::TEXT_MUTED)))
+                slot.hover(|style| style.text_color(rgb(theme::palette().text_muted)))
             })
             .tooltip(Tooltip::text(tip))
             // The grid's only what-if: no editor, just the label's time.
@@ -471,7 +471,7 @@ impl Elsewhere {
             .rounded_md()
             .map(|bar| match &self.pinned {
                 Some(pin) => bar.bg(rgba(pin.accent().tint)),
-                None => bar.bg(rgb(theme::SURFACE)),
+                None => bar.bg(rgb(theme::palette().surface)),
             })
     }
 

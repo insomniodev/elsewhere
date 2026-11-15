@@ -5,7 +5,7 @@ use gpui::{
 
 use super::Elsewhere;
 use super::button::Button;
-use crate::theme;
+use crate::theme::{self, Palette};
 
 /// The title bar looks the same everywhere, but what moves the window and
 /// works its controls differs by platform.
@@ -53,8 +53,8 @@ struct Control {
     id: &'static str,
     icon: &'static str,
     size: Pixels,
-    /// The icon's color on hover.
-    hover: u32,
+    /// The icon's color on hover, from the palette showing.
+    hover: fn(&Palette) -> u32,
     /// For Windows, which works the button itself.
     area: WindowControlArea,
     /// Where the app works the button. A plain fn, so the element can outlive
@@ -66,7 +66,7 @@ const MINIMIZE: Control = Control {
     id: "minimize",
     icon: "icons/minus.svg",
     size: px(14.),
-    hover: theme::TEXT,
+    hover: |palette| palette.text,
     area: WindowControlArea::Min,
     click: |window, _| window.minimize_window(),
 };
@@ -75,7 +75,7 @@ const MAXIMIZE: Control = Control {
     id: "maximize",
     icon: "icons/maximize-2.svg",
     size: px(12.),
-    hover: theme::TEXT,
+    hover: |palette| palette.text,
     area: WindowControlArea::Max,
     click: |window, _| window.zoom_window(),
 };
@@ -89,7 +89,7 @@ const CLOSE: Control = Control {
     id: "close",
     icon: "icons/x.svg",
     size: px(14.),
-    hover: theme::RED,
+    hover: |palette| palette.red,
     area: WindowControlArea::Close,
     // The one window is the whole app. Windows quits by itself once the last
     // window closes.
@@ -106,7 +106,7 @@ impl Elsewhere {
             area,
             click,
         } = *control;
-        let button = Button::new(id, icon, size).hover(hover);
+        let button = Button::new(id, icon, size).hover(hover(theme::palette()));
         match Chrome::CURRENT {
             // Windows acts on the press as its own caption button, so a click
             // handler would act twice. This also gives maximize its snap
@@ -145,7 +145,7 @@ impl Elsewhere {
                     .flex()
                     .items_center()
                     .text_xs()
-                    .text_color(rgb(theme::TEXT_FAINT))
+                    .text_color(rgb(theme::palette().text_faint))
                     .child("elsewhere")
                     .map(|strip| match Chrome::CURRENT {
                         // Windows has no move on request; the strip is its

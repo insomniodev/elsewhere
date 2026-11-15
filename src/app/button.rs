@@ -65,9 +65,9 @@ impl Button {
             id: id.into(),
             group: id,
             face,
-            rest: theme::TEXT_FAINT,
+            rest: theme::palette().text_faint,
             hover: None,
-            wash: rgb(theme::SURFACE),
+            wash: rgb(theme::palette().surface),
             on: false,
             current: false,
             disabled: false,
@@ -165,7 +165,7 @@ impl Button {
             focus,
         } = self;
         let live = !disabled && !current;
-        let color = if on { theme::BLUE } else { rest };
+        let color = if on { theme::palette().blue } else { rest };
         let labelled = matches!(face, Face::Label(_));
         let face: AnyElement = match face {
             Face::Icon { path, size } => {
@@ -199,7 +199,7 @@ impl Button {
             // Always drawn, so a focus ring has room.
             .border_1()
             .border_color(transparent_black())
-            .when(current, |button| button.bg(rgb(theme::SURFACE)))
+            .when(current, |button| button.bg(rgb(theme::palette().surface)))
             .when(live && click.is_some(), |button| button.cursor_pointer())
             .when(live && (click.is_some() || area.is_some()), |button| {
                 button.hover(|style| style.bg(wash))
@@ -209,7 +209,7 @@ impl Button {
             button = keyboard_only(
                 button
                     .track_focus(&handle)
-                    .focus(|style| style.border_color(rgb(theme::BLUE))),
+                    .focus(|style| style.border_color(rgb(theme::palette().blue))),
             );
         }
         if let Some(area) = area.filter(|_| live) {

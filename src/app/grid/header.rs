@@ -57,7 +57,7 @@ impl Elsewhere {
         } else {
             column.zone.as_ref().map(|zone| {
                 div()
-                    .text_color(rgb(theme::TEXT_FAINT))
+                    .text_color(rgb(theme::palette().text_faint))
                     .child(clock::shift_label(zone, now))
                     .into_any_element()
             })
@@ -76,7 +76,7 @@ impl Elsewhere {
             return head
                 .child(
                     shortened(div().id("head-here"))
-                        .text_color(rgb(theme::TEXT_MUTED))
+                        .text_color(rgb(theme::palette().text_muted))
                         .tooltip(Tooltip::text(self.here_detail(now)))
                         .child(self.here.name.clone()),
                 )
@@ -89,12 +89,12 @@ impl Elsewhere {
         let tip = clock::city_detail(&label, column.zone.as_ref(), now);
         head.child(
             shortened(div().id(("head", geonameid as usize)))
-                .text_color(rgb(theme::TEXT_MUTED))
+                .text_color(rgb(theme::palette().text_muted))
                 .tooltip(Tooltip::text(tip))
                 // As the list's row is washed, for a city just picked or
                 // restored.
                 .when(self.revealed == Some(geonameid), |name| {
-                    name.text_color(rgb(theme::TEXT))
+                    name.text_color(rgb(theme::palette().text))
                 })
                 .child(city.name.clone()),
         )

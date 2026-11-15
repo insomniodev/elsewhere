@@ -92,7 +92,7 @@ pub(super) fn ring() -> Div {
         .inset_0()
         .rounded_md()
         .border_1()
-        .border_color(rgb(theme::BLUE))
+        .border_color(rgb(theme::palette().blue))
 }
 
 impl Elsewhere {
