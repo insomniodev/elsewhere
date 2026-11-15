@@ -3,6 +3,8 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use gpui::WindowAppearance;
+
 pub(crate) struct Palette {
     pub(crate) bg: u32,
     /// Panels raised off the window.
@@ -118,4 +120,14 @@ pub(crate) fn palette() -> &'static Palette {
     } else {
         &DARK
     }
+}
+
+/// Shows the palette matching the system's light or dark preference. Takes
+/// effect on the next frame; the caller refreshes the window.
+pub(crate) fn follow(appearance: WindowAppearance) {
+    let light = matches!(
+        appearance,
+        WindowAppearance::Light | WindowAppearance::VibrantLight
+    );
+    LIGHT_ON.store(light, Ordering::Relaxed);
 }

@@ -150,6 +150,8 @@ pub struct Elsewhere {
     /// Restarted by each move or resize; dropping it cancels the write.
     settings_settle: Option<Task<()>>,
     _bounds: Subscription,
+    /// Follows the system's light or dark preference as it changes.
+    _appearance: Subscription,
     notice: Option<Notice>,
     /// Dropping it keeps the notice up.
     notice_timer: Option<Task<()>>,
@@ -248,6 +250,15 @@ impl Elsewhere {
 
         let here = here::locate(&index, &saved, Zoned::now().time_zone().clone(), None);
 
+        // Before the first frame. On Linux the desktop portal may answer only
+        // after the window opens; the observer then switches.
+        theme::follow(window.appearance());
+        let appearance = cx.observe_window_appearance(window, |_, window, _| {
+            theme::follow(window.appearance());
+            // The palette is read while rendering, so every view redraws.
+            window.refresh();
+        });
+
         let bounds = cx.observe_window_bounds(window, |this, window, cx| {
             this.settings_settle = Some(cx.spawn_in(window, async move |this, cx| {
                 cx.background_executor().timer(BOUNDS_SETTLE).await;
@@ -276,6 +287,7 @@ impl Elsewhere {
             settings_written: settings,
             settings_settle: None,
             _bounds: bounds,
+            _appearance: appearance,
             notice,
             notice_timer: None,
             zones,
