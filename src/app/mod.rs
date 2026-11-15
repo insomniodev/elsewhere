@@ -21,6 +21,7 @@ mod resize;
 mod row;
 mod scrollbar;
 pub(crate) mod search;
+pub(crate) mod text_input;
 pub(crate) mod titlebar;
 mod tooltip;
 
@@ -33,15 +34,15 @@ use crate::saved;
 use crate::search::SearchIndex;
 use crate::settings::{self, Settings};
 use crate::theme;
-use crate::vendor::text_input::TextInput;
 use crate::zones;
 use focus::Focus;
 use notice::{Kind, Notice};
 use page::Page;
 use scrollbar::scrollbar;
 use search::{SearchEvent, SearchPicker};
+use text_input::TextInput;
 
-// The vendored input claims neither key, so they bubble up to the
+// The text input claims neither key, so they bubble up to the
 // "PinEditor" wrapper.
 actions!(pin_editor, [Commit, Cancel]);
 

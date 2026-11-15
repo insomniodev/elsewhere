@@ -34,6 +34,8 @@ pub(crate) const PURPLE_TINT: u32 = 0xca72e414;
 pub(crate) const PURPLE_EDGE: u32 = 0xca72e440;
 /// Active or selected.
 pub(crate) const BLUE: u32 = 0x5ab0f6;
+/// Selected text: `BLUE` at 25%, for `rgba()`.
+pub(crate) const SELECTION: u32 = 0x5ab0f640;
 /// The real time while another is pinned: `BLUE` at 60%, for `rgba()`.
 pub(crate) const NOW_LINE: u32 = 0x5ab0f699;
 /// Destructive actions.

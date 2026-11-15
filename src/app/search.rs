@@ -7,11 +7,11 @@ use gpui::{
 
 use super::here::tag;
 use super::scrollbar::scrollbar;
+use super::text_input::TextInput;
 use crate::search::SearchIndex;
 use crate::theme;
-use crate::vendor::text_input::TextInput;
 
-// The vendored input claims none of these keys, so they bubble up to the
+// The text input claims none of these keys, so they bubble up to the
 // "SearchPicker" wrapper.
 actions!(search, [Confirm, Clear, MoveUp, MoveDown]);
 

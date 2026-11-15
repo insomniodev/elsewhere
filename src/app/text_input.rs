@@ -1,7 +1,9 @@
-// Single-line text input, adapted from gpui's examples/input.rs at Zed commit
-// 27bbbc1c. gpui has no built-in text input; this implements
-// EntityInputHandler (IME support) plus a custom Element that shapes and
-// paints the line.
+//! Single-line text input, themed and trimmed to what the search field and
+//! the row's time editor use. Based on the vendored module that was
+//! `src/vendor/text_input.rs`, itself adapted from gpui's
+//! `examples/input.rs` at Zed commit 27bbbc1c. gpui has no built-in text
+//! input; this implements `EntityInputHandler` (IME support) plus a custom
+//! `Element` that shapes and paints the line.
 
 use std::ops::Range;
 
@@ -10,9 +12,11 @@ use gpui::{
     EntityInputHandler, FocusHandle, Focusable, GlobalElementId, KeyBinding, LayoutId, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point, ShapedLine,
     SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, Window, actions, div, fill,
-    hsla, point, prelude::*, px, relative, rgb, rgba, size,
+    point, prelude::*, px, relative, rgb, rgba, size,
 };
 use unicode_segmentation::*;
+
+use crate::theme;
 
 actions!(
     text_input,
@@ -26,7 +30,6 @@ actions!(
         SelectAll,
         Home,
         End,
-        ShowCharacterPalette,
         Paste,
         Cut,
         Copy,
@@ -34,7 +37,7 @@ actions!(
 );
 
 // Call once at app startup; without this the input receives no keys.
-pub fn register_key_bindings(cx: &mut App) {
+pub(crate) fn register_key_bindings(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("backspace", Backspace, Some("TextInput")),
         KeyBinding::new("delete", Delete, Some("TextInput")),
@@ -51,7 +54,7 @@ pub fn register_key_bindings(cx: &mut App) {
     ]);
 }
 
-pub struct TextInput {
+pub(crate) struct TextInput {
     focus_handle: FocusHandle,
     content: SharedString,
     placeholder: SharedString,
@@ -64,7 +67,7 @@ pub struct TextInput {
 }
 
 impl TextInput {
-    pub fn new(placeholder: impl Into<SharedString>, cx: &mut Context<Self>) -> Self {
+    pub(crate) fn new(placeholder: impl Into<SharedString>, cx: &mut Context<Self>) -> Self {
         Self {
             focus_handle: cx.focus_handle(),
             content: "".into(),
@@ -78,7 +81,16 @@ impl TextInput {
         }
     }
 
-    pub fn text(&self) -> &str {
+    /// Starts with `text` in the field, all of it selected, so typing
+    /// replaces it and an arrow key drops the cursor in. Set before anyone
+    /// observes the input, so it notifies no one.
+    pub(crate) fn with_text(mut self, text: impl Into<SharedString>) -> Self {
+        self.content = text.into();
+        self.selected_range = 0..self.content.len();
+        self
+    }
+
+    pub(crate) fn text(&self) -> &str {
         &self.content
     }
 
@@ -172,15 +184,6 @@ impl TextInput {
         if self.is_selecting {
             self.select_to(self.index_for_mouse_position(event.position), window, cx);
         }
-    }
-
-    fn show_character_palette(
-        &mut self,
-        _: &ShowCharacterPalette,
-        window: &mut Window,
-        _: &mut Context<Self>,
-    ) {
-        window.show_character_palette();
     }
 
     fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
@@ -305,7 +308,7 @@ impl TextInput {
             .unwrap_or(self.content.len())
     }
 
-    pub fn reset(&mut self, window: &Window, cx: &mut Context<Self>) {
+    pub(crate) fn reset(&mut self, window: &Window, cx: &mut Context<Self>) {
         self.content = "".into();
         self.selected_range = 0..0;
         self.selection_reversed = false;
@@ -544,7 +547,7 @@ impl Element for TextElement {
         let style = window.text_style();
 
         let (display_text, text_color) = if content.is_empty() {
-            (input.placeholder.clone(), hsla(0., 0., 1., 0.3))
+            (input.placeholder.clone(), rgb(theme::TEXT_FAINT).into())
         } else {
             (content, style.color)
         };
@@ -598,7 +601,7 @@ impl Element for TextElement {
                         point(bounds.left() + cursor_pos, bounds.top()),
                         size(px(2.), bounds.bottom() - bounds.top()),
                     ),
-                    rgb(0x89b4fa),
+                    rgb(theme::BLUE),
                 )),
             )
         } else {
@@ -614,7 +617,7 @@ impl Element for TextElement {
                             bounds.bottom(),
                         ),
                     ),
-                    rgba(0x89b4fa40),
+                    rgba(theme::SELECTION),
                 )),
                 None,
             )
@@ -685,7 +688,6 @@ impl Render for TextInput {
             .on_action(cx.listener(Self::select_all))
             .on_action(cx.listener(Self::home))
             .on_action(cx.listener(Self::end))
-            .on_action(cx.listener(Self::show_character_palette))
             .on_action(cx.listener(Self::paste))
             .on_action(cx.listener(Self::cut))
             .on_action(cx.listener(Self::copy))
@@ -694,7 +696,7 @@ impl Render for TextInput {
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .w_full()
-            .bg(rgb(0x313244))
+            .bg(rgb(theme::SURFACE))
             .rounded_md()
             .line_height(px(24.))
             .text_size(px(16.))

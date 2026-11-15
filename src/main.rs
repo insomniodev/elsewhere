@@ -18,7 +18,6 @@ mod saved;
 mod search;
 mod settings;
 mod theme;
-mod vendor;
 mod zones;
 
 /// Wayland app id and X11 class; `assets/app/<APP_ID>.desktop` is named after it.
@@ -60,7 +59,7 @@ fn main() {
     gpui_platform::application()
         .with_assets(assets::Assets)
         .run(|cx: &mut App| {
-            vendor::text_input::register_key_bindings(cx);
+            app::text_input::register_key_bindings(cx);
             // cmd on macOS and ctrl elsewhere. gpui's own "secondary-" needs
             // the host OS, which `KeyBinding::new` no longer has.
             let secondary = |mac: &'static str, other: &'static str| {

@@ -52,7 +52,7 @@ SOFTWARE.
 
 ## gpui
 
-`src/vendor/text_input.rs` is adapted from `crates/gpui/examples/input.rs` in
+`src/app/text_input.rs` is adapted from `crates/gpui/examples/input.rs` in
 [Zed](https://github.com/zed-industries/zed), licensed under the Apache License
 2.0. Changes from the original are marked by the file's header and history.
 

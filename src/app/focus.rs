@@ -1,5 +1,5 @@
 //! Keyboard focus. The window walks its own list of stops rather than gpui's
-//! tab order, which cannot take the vendored search input as a stop, and
+//! tab order, which cannot take the search input as a stop, and
 //! which would put the notice and the banner where they paint: before the
 //! footer, shifting its every stop each time they come and go.
 

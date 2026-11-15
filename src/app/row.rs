@@ -1,9 +1,9 @@
 use std::time::Duration;
 
 use gpui::{
-    AnimationExt, App, Context, Div, ElementId, Entity, EntityInputHandler, Focusable,
-    HoverListenerMode, Pixels, SharedString, SpringAnimation, SpringConfig, Stateful, Window,
-    deferred, div, prelude::*, px, rgb, rgba,
+    AnimationExt, App, Context, Div, ElementId, Entity, Focusable, HoverListenerMode, Pixels,
+    SharedString, SpringAnimation, SpringConfig, Stateful, Window, deferred, div, prelude::*, px,
+    rgb, rgba,
 };
 use jiff::Zoned;
 
@@ -12,21 +12,21 @@ use super::drag::{DragRow, drop_target};
 use super::focus::{keyboard_only, ring};
 use super::here::{hint, tag};
 use super::notice::{Kind, Notice};
+use super::text_input::TextInput;
 use super::tooltip::Tooltip;
 use super::{Cancel, Commit, Edit, Elsewhere, MoveDown, MoveUp, Pin, Remove};
 use crate::clock;
 use crate::theme;
-use crate::vendor::text_input::TextInput;
 
 /// Fixed so the reading and the editor share a box and a row does not reflow
 /// as its digits change. The longest reading in a 0.6em mono at 16px, which
-/// every face on the list is, plus the vendored input's 6px padding either
+/// every face on the list is, plus the text input's 6px padding either
 /// side, so the editor hugs the digits.
 fn time_width(format: clock::Format) -> Pixels {
     px(format.glyphs() as f32 * 9.6 + 12.)
 }
 
-/// Also the row's height: the vendored input's, reserved even while it is
+/// Also the row's height: the text input's, reserved even while it is
 /// closed so opening it does not push the list down. The honest fix is a
 /// shorter input.
 const TIME_HEIGHT: Pixels = px(36.);
@@ -36,7 +36,7 @@ const TIME_HEIGHT: Pixels = px(36.);
 /// axes, which would square off the row's left corners.
 const WASH: Pixels = px(8.);
 
-/// The time's inset from the row's right edge, which with the vendored
+/// The time's inset from the row's right edge, which with the text
 /// input's 6px makes the digits' inset the label's.
 const EDGE: Pixels = px(2.);
 
@@ -191,16 +191,8 @@ impl Elsewhere {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let input = cx.new(|cx| {
-            let mut input = TextInput::new(current.clone(), cx);
-            // Marking then unmarking is the vendored input's only way to set
-            // text with a selection. It notifies before `retime` observes, so
-            // opening pins nothing.
-            let all = current.encode_utf16().count();
-            input.replace_and_mark_text_in_range(None, &current, Some(0..all), window, cx);
-            input.unmark_text(window, cx);
-            input
-        });
+        // Filled before `retime` observes, so opening pins nothing.
+        let input = cx.new(|cx| TextInput::new(current.clone(), cx).with_text(current));
         // Not over one already open, which is still the editor's own pin
         // and focus.
         if self.editing.is_none() {
@@ -288,7 +280,7 @@ impl Elsewhere {
         cx.notify();
     }
 
-    /// Enter and escape fall through the vendored input, so the wrapper
+    /// Enter and escape fall through the text input, so the wrapper
     /// carries the context that catches them. The map opens the same editor.
     pub(super) fn render_editor(&self, input: &Entity<TextInput>, cx: &mut Context<Self>) -> Div {
         let text = input.read(cx).text();
@@ -543,7 +535,7 @@ impl Elsewhere {
                                             .h_full()
                                             .flex()
                                             .items_center()
-                                            // The vendored input's inset, so the digits
+                                            // The text input's inset, so the digits
                                             // hold still when the editor opens.
                                             .px(px(6.))
                                             .rounded_md()
