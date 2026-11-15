@@ -7,6 +7,7 @@ use jiff::tz::TimeZone;
 
 use super::button::Button;
 use super::focus::{Focus, keyboard_only};
+use super::page::Page;
 use super::tooltip::Tooltip;
 use super::{Elsewhere, View};
 use crate::clock::{self, Format};
@@ -119,6 +120,8 @@ impl Elsewhere {
     }
 
     pub(super) fn switch(&mut self, to: View, window: &mut Window, cx: &mut Context<Self>) {
+        // A page gives way to the view asked for.
+        self.close_page(window, cx);
         if self.view == to {
             return;
         }
@@ -157,6 +160,7 @@ impl Elsewhere {
         } else if (BY_CLOCK.unavailable)(self).is_none() {
             stops.push(self.focus.by_clock.clone());
         }
+        stops.push(self.focus.settings.clone());
         stops
     }
 
@@ -407,7 +411,16 @@ impl Elsewhere {
                     .flex_row()
                     .gap_1()
                     .child(self.render_toggle(&FORMAT, cx))
-                    .child(self.render_order(cx)),
+                    .child(self.render_order(cx))
+                    .child(
+                        Button::new("settings", "icons/settings.svg", px(15.))
+                            .focus(self.focus.settings.clone())
+                            .tooltip(Tooltip::text(format!("settings · {MODIFIER}+,")))
+                            .on_click(cx.listener(|this, _event, window, cx| {
+                                this.open_page(Page::Settings, window, cx)
+                            }))
+                            .build(),
+                    ),
             )
     }
 }

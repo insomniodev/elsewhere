@@ -16,6 +16,8 @@ pub struct Settings {
     /// Ordered by UTC offset rather than by hand.
     pub by_clock: bool,
     pub format: Format,
+    /// The desktop's title bar and frame rather than the app's. Linux only.
+    pub system_frame: bool,
     /// The windowed size, kept while maximized.
     pub size: Option<Size<Pixels>>,
     /// Wayland never tells a window where it is, so there this stays as it
@@ -57,6 +59,11 @@ fn parse(text: &str) -> Settings {
                 "12" => settings.format = Format::Twelve,
                 _ => {}
             },
+            "decorations" => match value {
+                "app" => settings.system_frame = false,
+                "system" => settings.system_frame = true,
+                _ => {}
+            },
             "width" => width = number(value).filter(|n| *n > 0.),
             "height" => height = number(value).filter(|n| *n > 0.),
             "x" => x = number(value),
@@ -85,7 +92,15 @@ fn render(settings: &Settings) -> String {
         Format::TwentyFour => "24",
         Format::Twelve => "12",
     };
-    let mut out = format!("{HEADER}\nview = {view}\norder = {order}\nformat = {format}\n");
+    let decorations = if settings.system_frame {
+        "system"
+    } else {
+        "app"
+    };
+    let mut out = format!(
+        "{HEADER}\nview = {view}\norder = {order}\nformat = {format}\n\
+         decorations = {decorations}\n"
+    );
     if let Some(size) = settings.size {
         let (width, height) = (
             f32::from(size.width).round(),
@@ -125,7 +140,7 @@ mod tests {
 
     #[test]
     fn parses_every_key() {
-        let text = "view = grid\norder = clock\nformat = 12\n\
+        let text = "view = grid\norder = clock\nformat = 12\ndecorations = system\n\
                     width = 472\nheight = 590\nx = -1200\ny = 40\n";
         assert_eq!(
             parse(text),
@@ -133,6 +148,7 @@ mod tests {
                 view: View::Grid,
                 by_clock: true,
                 format: Format::Twelve,
+                system_frame: true,
                 size: Some(size(px(472.), px(590.))),
                 origin: Some(point(px(-1200.), px(40.))),
             }
@@ -174,6 +190,7 @@ mod tests {
             view: View::Map,
             by_clock: true,
             format: Format::Twelve,
+            system_frame: true,
             size: Some(size(px(472.), px(590.))),
             origin: Some(point(px(100.), px(-20.))),
         };

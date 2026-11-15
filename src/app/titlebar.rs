@@ -1,6 +1,6 @@
 use gpui::{
-    Context, MouseButton, MouseDownEvent, Pixels, Point, Window, WindowControlArea, div, point,
-    prelude::*, px, rgb,
+    Context, Decorations, MouseButton, MouseDownEvent, Pixels, Point, Window, WindowControlArea,
+    div, point, prelude::*, px, rgb,
 };
 
 use super::Elsewhere;
@@ -31,6 +31,17 @@ impl Chrome {
     } else {
         Chrome::Linux
     };
+}
+
+/// Whether the desktop's own title bar and frame can stand in for the app's.
+/// Windows keeps its system frame either way, and gpui cannot hide the traffic
+/// lights.
+pub(crate) const FRAME_CHOICE: bool = matches!(Chrome::CURRENT, Chrome::Linux);
+
+/// Whether the desktop draws the title bar, so the app draws none. Asked of
+/// the window rather than the setting, since a compositor may refuse either.
+pub(super) fn system_frame(window: &Window) -> bool {
+    FRAME_CHOICE && matches!(window.window_decorations(), Decorations::Server)
 }
 
 /// In line with the padding, centered on the title bar.

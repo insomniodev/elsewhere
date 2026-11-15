@@ -16,6 +16,13 @@ pub(super) struct Focus {
     pub(super) fit: FocusHandle,
     pub(super) format: FocusHandle,
     pub(super) by_clock: FocusHandle,
+    pub(super) settings: FocusHandle,
+    /// The open page, which takes focus as it opens so nothing wears a ring.
+    pub(super) page: FocusHandle,
+    pub(super) back: FocusHandle,
+    pub(super) decorations: FocusHandle,
+    pub(super) repository: FocusHandle,
+    pub(super) third_party: FocusHandle,
     pub(super) unpin: FocusHandle,
     pub(super) notice_action: FocusHandle,
     pub(super) notice_dismiss: FocusHandle,
@@ -41,6 +48,12 @@ impl Focus {
             fit: cx.focus_handle(),
             format: cx.focus_handle(),
             by_clock: cx.focus_handle(),
+            settings: cx.focus_handle(),
+            page: cx.focus_handle(),
+            back: cx.focus_handle(),
+            decorations: cx.focus_handle(),
+            repository: cx.focus_handle(),
+            third_party: cx.focus_handle(),
             unpin: cx.focus_handle(),
             notice_action: cx.focus_handle(),
             notice_dismiss: cx.focus_handle(),
@@ -101,22 +114,10 @@ impl Elsewhere {
                 .or_insert_with(|| cx.focus_handle());
         }
         let mut stops = vec![(self.picker.focus_handle(cx), None)];
-        match self.view {
-            View::List => stops.extend(order.iter().enumerate().filter_map(|(i, geonameid)| {
-                let handle = self.focus.row(*geonameid)?.clone();
-                Some((handle, Some(i + usize::from(here_row))))
-            })),
-            // In the saved order, as the dots are drawn.
-            View::Map => stops.extend(
-                self.saved
-                    .iter()
-                    .filter_map(|geonameid| Some((self.focus.row(*geonameid)?.clone(), None))),
-            ),
-            View::Grid => stops.push((self.focus.grid.clone(), None)),
-        }
-        stops.extend(self.footer_stops().into_iter().map(|handle| (handle, None)));
-        if self.pinned.is_some() {
-            stops.push((self.focus.unpin.clone(), None));
+        if self.page.is_some() {
+            stops = self.page_stops().into_iter().map(|h| (h, None)).collect();
+        } else {
+            self.view_stops(&mut stops, order, here_row);
         }
         if let Some(notice) = &self.notice {
             if notice.has_action() {
@@ -149,6 +150,33 @@ impl Elsewhere {
                 let handle = self.focus.stops[at].0.clone();
                 cx.defer_in(window, move |_, window, cx| window.focus(&handle, cx));
             }
+        }
+    }
+
+    /// Search's stop is already in `stops`; the view's cities, the footer and
+    /// the banner follow.
+    fn view_stops(
+        &self,
+        stops: &mut Vec<(FocusHandle, Option<usize>)>,
+        order: &[u32],
+        here_row: bool,
+    ) {
+        match self.view {
+            View::List => stops.extend(order.iter().enumerate().filter_map(|(i, geonameid)| {
+                let handle = self.focus.row(*geonameid)?.clone();
+                Some((handle, Some(i + usize::from(here_row))))
+            })),
+            // In the saved order, as the dots are drawn.
+            View::Map => stops.extend(
+                self.saved
+                    .iter()
+                    .filter_map(|geonameid| Some((self.focus.row(*geonameid)?.clone(), None))),
+            ),
+            View::Grid => stops.push((self.focus.grid.clone(), None)),
+        }
+        stops.extend(self.footer_stops().into_iter().map(|handle| (handle, None)));
+        if self.pinned.is_some() {
+            stops.push((self.focus.unpin.clone(), None));
         }
     }
 

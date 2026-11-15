@@ -97,6 +97,11 @@ fn main() {
                     app::ShowGrid,
                     Some("Elsewhere"),
                 ),
+                KeyBinding::new(
+                    secondary("cmd-,", "ctrl-,"),
+                    app::ShowSettings,
+                    Some("Elsewhere"),
+                ),
                 KeyBinding::new(secondary("cmd-q", "ctrl-q"), app::Close, Some("Elsewhere")),
                 KeyBinding::new(secondary("cmd-w", "ctrl-w"), app::Close, Some("Elsewhere")),
                 KeyBinding::new("enter", app::Edit, Some("Row")),
@@ -123,6 +128,7 @@ fn main() {
             // Read before the window opens, so it opens where it was left.
             let settings = settings::load();
             let bounds = bounds(settings.as_ref().ok(), cx);
+            let system_frame = settings.as_ref().is_ok_and(|s| s.system_frame);
             cx.open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -136,8 +142,12 @@ fn main() {
                         traffic_light_position: Some(app::titlebar::MAC_TRAFFIC_LIGHTS),
                     }),
                     // Linux: the app draws its own title bar and frame, if
-                    // the compositor allows.
-                    window_decorations: Some(WindowDecorations::Client),
+                    // the compositor allows, unless set to the system's.
+                    window_decorations: Some(if system_frame {
+                        WindowDecorations::Server
+                    } else {
+                        WindowDecorations::Client
+                    }),
                     // Matches the desktop entry, so docks show its icon.
                     app_id: Some(APP_ID.into()),
                     ..Default::default()

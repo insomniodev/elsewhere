@@ -16,6 +16,7 @@ mod grid;
 mod here;
 mod map;
 mod notice;
+mod page;
 mod resize;
 mod row;
 mod scrollbar;
@@ -36,6 +37,7 @@ use crate::vendor::text_input::TextInput;
 use crate::zones;
 use focus::Focus;
 use notice::{Kind, Notice};
+use page::Page;
 use scrollbar::scrollbar;
 use search::{SearchEvent, SearchPicker};
 
@@ -54,7 +56,16 @@ actions!(grid, [CellLeft, CellRight, CellUp, CellDown, PinCell]);
 actions!(
     elsewhere,
     [
-        Unpin, Later, Earlier, FocusNext, FocusPrev, ShowList, ShowMap, ShowGrid, Close
+        Unpin,
+        Later,
+        Earlier,
+        FocusNext,
+        FocusPrev,
+        ShowList,
+        ShowMap,
+        ShowGrid,
+        ShowSettings,
+        Close
     ]
 );
 
@@ -158,6 +169,11 @@ pub struct Elsewhere {
     /// Ordered by UTC offset rather than by hand.
     by_clock: bool,
     format: clock::Format,
+    /// The desktop's title bar and frame rather than the app's.
+    system_frame: bool,
+    /// Over the view while open, which it leaves as it was.
+    page: Option<Page>,
+    page_scroll: ScrollHandle,
     /// `None` follows the real clock.
     pinned: Option<Pin>,
     /// `pinned` as it was when the editor opened, live time included, so
@@ -252,6 +268,9 @@ impl Elsewhere {
             view: settings.view,
             by_clock: settings.by_clock,
             format: settings.format,
+            system_frame: settings.system_frame,
+            page: None,
+            page_scroll: ScrollHandle::new(),
             settings_written: settings,
             settings_settle: None,
             _bounds: bounds,
@@ -320,6 +339,7 @@ impl Elsewhere {
             view: self.view,
             by_clock: self.by_clock,
             format: self.format,
+            system_frame: self.system_frame,
             size: Some(bounds.size),
             origin: Some(bounds.origin),
         };
@@ -434,7 +454,11 @@ impl Elsewhere {
     }
 
     /// An open editor would keep showing the typed time, so it closes first.
+    /// Not from a page, which shows no time to move.
     fn step(&mut self, steps: i64, window: &mut Window, cx: &mut Context<Self>) {
+        if self.page.is_some() {
+            return;
+        }
         self.close_editor(window, cx);
         self.nudge(steps, cx);
     }
@@ -515,9 +539,17 @@ impl Render for Elsewhere {
             }
         }
         self.tab_stops(&order, here_row, window, cx);
+        let system_frame = titlebar::system_frame(window);
         div()
             .key_context("Elsewhere")
-            .on_action(cx.listener(|this, _: &Unpin, window, cx| this.unpin(window, cx)))
+            // Esc leaves a page before it unpins.
+            .on_action(cx.listener(|this, _: &Unpin, window, cx| {
+                if this.page.is_some() {
+                    this.close_page(window, cx);
+                } else {
+                    this.unpin(window, cx);
+                }
+            }))
             .on_action(cx.listener(|this, _: &Later, window, cx| this.step(1, window, cx)))
             .on_action(cx.listener(|this, _: &Earlier, window, cx| this.step(-1, window, cx)))
             .on_action(
@@ -535,26 +567,60 @@ impl Render for Elsewhere {
             .on_action(
                 cx.listener(|this, _: &ShowGrid, window, cx| this.switch(View::Grid, window, cx)),
             )
+            .on_action(cx.listener(|this, _: &ShowSettings, window, cx| {
+                this.open_page(Page::Settings, window, cx)
+            }))
             .on_action(cx.listener(|this, _: &Close, window, cx| this.close(window, cx)))
             .relative()
             .size_full()
             .flex()
             .flex_col()
             .gap(GAP)
-            // The title bar sits in what would be the top padding.
             .px_4()
-            .pt_1()
             .pb(PAD_BOTTOM)
             .bg(rgb(theme::BASE))
             .text_color(rgb(theme::TEXT))
-            .child(self.render_titlebar(window, cx))
-            .child(self.picker.clone())
+            // The title bar sits in what would be the top padding.
+            .map(|root| {
+                if system_frame {
+                    root.pt_4()
+                } else {
+                    root.pt_1().child(self.render_titlebar(window, cx))
+                }
+            })
+            .map(|root| match self.page {
+                Some(page) => root
+                    .child(self.render_page(page, cx))
+                    .children(self.render_notice(cx)),
+                None => self.render_main(root, &now, &order, empty, here_row, dragging, window, cx),
+            })
+            // Last, so they lie over everything else.
+            .children(resize::handles(window))
+    }
+}
+
+impl Elsewhere {
+    /// The search, the view and the footer, which a page stands in for.
+    #[allow(clippy::too_many_arguments)]
+    fn render_main(
+        &self,
+        root: gpui::Div,
+        now: &Zoned,
+        order: &[u32],
+        empty: bool,
+        here_row: bool,
+        dragging: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> gpui::Div {
+        let now = now.clone();
+        root.child(self.picker.clone())
             // Scrolls on its own so the input and toolbar stay put. `min_h_0`
             // lets this flex child shrink below its content and overflow.
             .child(div().relative().flex_1().min_h_0().map(|region| {
                 match self.view {
                     View::Map => region.child(self.render_map(&self.saved, &now, empty, cx)),
-                    View::Grid => region.child(self.render_grid(&order, &now, empty, cx)),
+                    View::Grid => region.child(self.render_grid(order, &now, empty, cx)),
                     View::List => {
                         region
                             .child(
@@ -596,8 +662,6 @@ impl Render for Elsewhere {
             .children(self.render_banner(&now, window, cx))
             .children(self.render_time_hint())
             .child(self.render_footer(cx))
-            // Last, so they lie over everything else.
-            .children(resize::handles(window))
     }
 }
 
