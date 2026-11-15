@@ -7,7 +7,7 @@ use jiff::Zoned;
 
 use super::{COLUMN, Column, INSET, LABEL};
 use crate::app::Elsewhere;
-use crate::app::drag::{DragRow, Edge, drop_target};
+use crate::app::drag::DragRow;
 use crate::app::tooltip::Tooltip;
 use crate::clock;
 use crate::theme;
@@ -74,7 +74,7 @@ impl Elsewhere {
             Some(geonameid) => ElementId::from(("head-column", geonameid as usize)),
             None => ElementId::from("head-column-here"),
         };
-        let head = drop_target(div(), Edge::Left, open)
+        let head = div()
             .id(id)
             .group(HEAD_GROUP)
             .flex_1()
@@ -83,15 +83,7 @@ impl Elsewhere {
             .flex()
             .flex_col()
             .justify_end()
-            .pb_2()
-            .when(open, |head| match column.before {
-                Some(before) => {
-                    head.on_drop(cx.listener(move |this, row: &DragRow, _window, cx| {
-                        this.drop(row.geonameid, Some(before), cx)
-                    }))
-                }
-                None => head,
-            });
+            .pb_2();
         let Some(geonameid) = column.geonameid else {
             return head
                 .child(
