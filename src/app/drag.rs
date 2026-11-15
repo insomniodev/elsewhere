@@ -27,18 +27,31 @@ impl Render for DragRow {
     }
 }
 
-/// A transparent top border that lights up as the insertion line while
+/// Which side of a drop target wears the insertion line.
+#[derive(Clone, Copy)]
+pub(super) enum Edge {
+    /// Over a row, which a drop lands before.
+    Top,
+    /// Before a column.
+    Left,
+    /// After the last column.
+    Right,
+}
+
+/// A transparent border on `edge` that lights up as the insertion line while
 /// `open`, and is worn even closed so the layout does not change with the
 /// view. The caller attaches the `on_drop`, and may color the border at rest.
-pub(super) fn drop_target(element: Div, open: bool) -> Div {
-    element
-        .border_t_1()
-        .border_color(transparent_black())
-        .when(open, |element| {
-            element.drag_over::<DragRow>(|style, _, _, _| {
-                style.border_color(rgb(theme::palette().blue))
-            })
-        })
+pub(super) fn drop_target(element: Div, edge: Edge, open: bool) -> Div {
+    match edge {
+        Edge::Top => element.border_t_1(),
+        Edge::Left => element.border_l_1(),
+        Edge::Right => element.border_r_1(),
+    }
+    .border_color(transparent_black())
+    .when(open, |element| {
+        element
+            .drag_over::<DragRow>(|style, _, _, _| style.border_color(rgb(theme::palette().blue)))
+    })
 }
 
 impl Elsewhere {
@@ -69,7 +82,7 @@ impl Elsewhere {
 
     /// The space below the list catches a drop meant for the end.
     pub(super) fn render_drop_tail(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        drop_target(div().flex_1().min_h_4(), true).on_drop(
+        drop_target(div().flex_1().min_h_4(), Edge::Top, true).on_drop(
             cx.listener(|this, row: &DragRow, _window, cx| this.drop(row.geonameid, None, cx)),
         )
     }

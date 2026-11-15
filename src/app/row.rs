@@ -8,7 +8,7 @@ use gpui::{
 use jiff::Zoned;
 
 use super::button::Button;
-use super::drag::{DragRow, drop_target};
+use super::drag::{DragRow, Edge, drop_target};
 use super::focus::{keyboard_only, ring};
 use super::here::{hint, tag};
 use super::notice::{Kind, Notice};
@@ -427,7 +427,7 @@ impl Elsewhere {
         // them would move nothing.
         // The first row wears it transparent, so a drop before it has a line
         // to show. No inset at the list's ends, with nothing to space from.
-        let target = drop_target(div(), !self.by_clock)
+        let target = drop_target(div(), Edge::Top, !self.by_clock)
             .when(!first, |row| {
                 row.border_color(rgb(theme::palette().surface))
             })

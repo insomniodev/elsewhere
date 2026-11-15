@@ -11,6 +11,7 @@ use jiff::Zoned;
 use jiff::civil::Date;
 use jiff::tz::TimeZone;
 
+use super::drag::{DragRow, Edge, drop_target};
 use super::focus::{keyboard_only, ring};
 use super::here::{hint_over, tag};
 use super::scrollbar::scrollbar;
@@ -45,6 +46,10 @@ const DAY_LINE: Pixels = px(12.);
 /// The now line's hover band, so a 1px line can still be pointed at.
 const NOW_REACH: Pixels = px(7.);
 
+/// The strip at the grid's right edge that catches a drop meant for the end,
+/// as the columns leave no room beyond the last.
+const TAIL: Pixels = px(20.);
+
 struct Column {
     /// `None` for here's own column, drawn only while no saved city is in
     /// the zone.
@@ -52,6 +57,9 @@ struct Column {
     /// `None` when the zone is unknown: the column keeps its head and rule but
     /// no labels.
     zone: Option<TimeZone>,
+    /// What a drop on this column lands before: itself, or for here's
+    /// column, the first saved city.
+    before: Option<u32>,
     /// The hour the keyboard cursor is on, if it is in this column and the
     /// grid has focus.
     cursor: Option<usize>,
@@ -97,9 +105,12 @@ impl Elsewhere {
         order: &[u32],
         now: &Zoned,
         empty: bool,
+        dragging: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let day = hours::Day::of(now);
+        // Dropped on only in the hand-arranged order, as the list is.
+        let targets = !self.by_clock && dragging && self.drag.is_some();
         // Alone, here's column keeps its own width at the left rather than
         // stretching its rule to the far edge.
         let alone = order.is_empty();
@@ -142,7 +153,7 @@ impl Elsewhere {
                             .when(!alone, |content| content.min_w_full())
                             .flex()
                             .flex_col()
-                            .child(self.render_heads(&columns, now, cx))
+                            .child(self.render_heads(&columns, now, dragging, cx))
                             .child(
                                 div()
                                     .id("grid-hours")
@@ -156,7 +167,7 @@ impl Elsewhere {
                                         scroller.style().restrict_scroll_to_axis = Some(true);
                                         scroller
                                     })
-                                    .child(self.render_body(&day, &columns, now, cx)),
+                                    .child(self.render_body(&day, &columns, now, targets, cx)),
                             ),
                     ),
             )
@@ -183,6 +194,18 @@ impl Elsewhere {
                 px(0.),
             ))
             .child(self.render_date(now))
+            .when(targets, |grid| {
+                grid.child(
+                    drop_target(
+                        div().absolute().top_0().bottom_0().right_0().w(TAIL),
+                        Edge::Right,
+                        true,
+                    )
+                    .on_drop(cx.listener(
+                        |this, row: &DragRow, _window, cx| this.drop(row.geonameid, None, cx),
+                    )),
+                )
+            })
             // Beside here's column, not over its hours.
             .when(empty, |grid| {
                 grid.child(hint_over(
@@ -197,6 +220,7 @@ impl Elsewhere {
         let here = self.here.city.is_none().then(|| Column {
             geonameid: None,
             zone: Some(self.here.zone.clone()),
+            before: order.first().copied(),
             cursor: None,
         });
         here.into_iter()
@@ -205,6 +229,7 @@ impl Elsewhere {
                 Some(Column {
                     geonameid: Some(*geonameid),
                     zone: self.zones.get(&city.timezone).cloned(),
+                    before: Some(*geonameid),
                     cursor: None,
                 })
             }))
@@ -291,6 +316,7 @@ impl Elsewhere {
         day: &hours::Day,
         columns: &[Column],
         now: &Zoned,
+        targets: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let shown = day.index(now);
@@ -314,7 +340,7 @@ impl Elsewhere {
             .children(
                 columns
                     .iter()
-                    .map(|column| self.render_column(day, column, shown, now, cx)),
+                    .map(|column| self.render_column(day, column, shown, now, targets, cx)),
             )
             // The line's hover band goes last, so it is on top to be pointed at.
             .children(live.map(|(hours, real)| {
@@ -333,6 +359,7 @@ impl Elsewhere {
         column: &Column,
         shown: Option<usize>,
         now: &Zoned,
+        targets: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         // Keyed by city so its hour state follows it when the order changes.
@@ -342,6 +369,7 @@ impl Elsewhere {
         };
         div()
             .id(id)
+            .relative()
             .flex_1()
             .min_w(COLUMN)
             .pb(ROW / 2.)
@@ -356,6 +384,18 @@ impl Elsewhere {
                     .as_ref()
                     .and_then(|zone| day.begins_day(i, zone));
                 self.render_hour(&day.row(i), column, i, shown, begins, cx)
+            }))
+            // Over the hours, which would otherwise take the drop, and only
+            // while dragging so a click still reaches them.
+            .children(column.before.filter(|_| targets).map(|before| {
+                drop_target(
+                    div().absolute().top_0().bottom_0().left_0().right_0(),
+                    Edge::Left,
+                    true,
+                )
+                .on_drop(cx.listener(move |this, row: &DragRow, _window, cx| {
+                    this.drop(row.geonameid, Some(before), cx)
+                }))
             }))
     }
 

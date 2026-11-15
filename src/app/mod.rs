@@ -639,7 +639,7 @@ impl Elsewhere {
             .child(div().relative().flex_1().min_h_0().map(|region| {
                 match self.view {
                     View::Map => region.child(self.render_map(&self.saved, &now, empty, cx)),
-                    View::Grid => region.child(self.render_grid(order, &now, empty, cx)),
+                    View::Grid => region.child(self.render_grid(order, &now, empty, dragging, cx)),
                     View::List => {
                         region
                             .child(

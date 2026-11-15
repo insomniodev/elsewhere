@@ -2,11 +2,12 @@
 //! shows its remove button while hovered, on the offset's line, where there
 //! is room for it.
 
-use gpui::{Context, Pixels, Styled, div, prelude::*, px, rgb};
+use gpui::{Context, ElementId, Pixels, Styled, div, prelude::*, px, rgb};
 use jiff::Zoned;
 
 use super::{COLUMN, Column, INSET, LABEL};
 use crate::app::Elsewhere;
+use crate::app::drag::{DragRow, Edge, drop_target};
 use crate::app::tooltip::Tooltip;
 use crate::clock;
 use crate::theme;
@@ -29,22 +30,27 @@ impl Elsewhere {
         &self,
         columns: &[Column],
         now: &Zoned,
+        dragging: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         div().flex_none().h(HEAD).flex().flex_row().children(
             columns
                 .iter()
-                .map(|column| self.render_head(column, now, cx)),
+                .map(|column| self.render_head(column, now, dragging, cx)),
         )
     }
 
     /// The name is all the room there is, so the tooltip carries the full
     /// label and what the zone is called today. The line under the name is
     /// hours from here, or "here" on here's own column.
+    ///
+    /// A saved city's head is its column's drag handle, in the hand-arranged
+    /// order; the hours are not, as a click on them pins.
     fn render_head(
         &self,
         column: &Column,
         now: &Zoned,
+        dragging: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let here = column.geonameid.is_none() || column.geonameid == self.here.city;
@@ -63,7 +69,13 @@ impl Elsewhere {
             })
         }
         .map(|line| shortened(div()).child(line));
-        let head = div()
+        let open = !self.by_clock;
+        let id = match column.geonameid {
+            Some(geonameid) => ElementId::from(("head-column", geonameid as usize)),
+            None => ElementId::from("head-column-here"),
+        };
+        let head = drop_target(div(), Edge::Left, open)
+            .id(id)
             .group(HEAD_GROUP)
             .flex_1()
             .min_w(COLUMN)
@@ -71,7 +83,15 @@ impl Elsewhere {
             .flex()
             .flex_col()
             .justify_end()
-            .pb_2();
+            .pb_2()
+            .when(open, |head| match column.before {
+                Some(before) => {
+                    head.on_drop(cx.listener(move |this, row: &DragRow, _window, cx| {
+                        this.drop(row.geonameid, Some(before), cx)
+                    }))
+                }
+                None => head,
+            });
         let Some(geonameid) = column.geonameid else {
             return head
                 .child(
@@ -87,7 +107,20 @@ impl Elsewhere {
         };
         let label = self.index.label(city);
         let tip = clock::city_detail(&label, column.zone.as_ref(), now);
-        head.child(
+        let label_for_drag = label.clone();
+        head.when(open, |head| {
+            head.cursor_grab().on_drag(
+                DragRow {
+                    geonameid,
+                    label: label_for_drag,
+                },
+                Self::drag_preview(cx),
+            )
+        })
+        .when(dragging && self.drag == Some(geonameid), |head| {
+            head.opacity(0.4)
+        })
+        .child(
             shortened(div().id(("head", geonameid as usize)))
                 .text_color(rgb(theme::palette().text_muted))
                 .tooltip(Tooltip::text(tip))
