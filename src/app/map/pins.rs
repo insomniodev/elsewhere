@@ -404,13 +404,11 @@ impl Elsewhere {
                     .tooltip(Tooltip::text(marker.tip.clone()))
                     .child(marker.name.clone()),
             )
-            // In the dot's own blue, so the reader's place stands out.
             .when(marker.home, |body| {
                 body.child(
                     self.here_tag("map-here", now)
                         .text_size(name_size())
-                        .line_height(px(NAME_LINE))
-                        .text_color(rgb(theme::BLUE)),
+                        .line_height(px(NAME_LINE)),
                 )
             });
         div()

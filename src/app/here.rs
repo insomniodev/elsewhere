@@ -80,9 +80,11 @@ impl Elsewhere {
 
     /// The "here" mark, whose tooltip names the zone: the only place its IANA
     /// name and offset from UTC show when the face is a zone rather than a
-    /// city.
+    /// city. In the map dot's blue in every view, so the reader's place stands
+    /// out.
     pub(super) fn here_tag(&self, id: &'static str, now: &Zoned) -> Stateful<Div> {
         tag("here")
+            .text_color(rgb(theme::BLUE))
             .id(id)
             .tooltip(Tooltip::text(self.here_detail(now)))
     }
