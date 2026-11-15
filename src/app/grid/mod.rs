@@ -16,7 +16,7 @@ use super::focus::{keyboard_only, ring};
 use super::here::{hint_over, tag};
 use super::scrollbar::scrollbar;
 use super::tooltip::Tooltip;
-use super::{CellDown, CellLeft, CellRight, CellUp, Elsewhere, Pin, PinCell};
+use super::{CellDown, CellLeft, CellRight, CellUp, Elsewhere, MoveLeft, MoveRight, Pin, PinCell};
 use crate::clock;
 use crate::hours;
 use crate::theme;
@@ -71,9 +71,9 @@ fn drop_lanes(columns: &[Column], cx: &mut Context<Elsewhere>) -> Div {
 }
 
 fn drop_half(edge: Edge, before: Option<u32>, cx: &mut Context<Elsewhere>) -> Div {
-    drop_target(div().absolute().top_0().bottom_0().w_1_2(), edge, true).on_drop(cx.listener(
-        move |this, row: &DragRow, _window, cx| this.drop(row.geonameid, before, cx),
-    ))
+    drop_target(div().absolute().top_0().bottom_0().w_1_2(), edge, true).on_drop(
+        cx.listener(move |this, row: &DragRow, _window, cx| this.drop(row.geonameid, before, cx)),
+    )
 }
 
 struct Column {
@@ -158,6 +158,8 @@ impl Elsewhere {
             .on_action(cx.listener(|this, _: &CellUp, _window, cx| this.move_cell(0, -1, cx)))
             .on_action(cx.listener(|this, _: &CellDown, _window, cx| this.move_cell(0, 1, cx)))
             .on_action(cx.listener(|this, _: &PinCell, _window, cx| this.pin_cell(cx)))
+            .on_action(cx.listener(|this, _: &MoveLeft, _window, cx| this.shift_column(true, cx)))
+            .on_action(cx.listener(|this, _: &MoveRight, _window, cx| this.shift_column(false, cx)))
             .relative()
             .size_full()
             .child(self.render_scroll_to_now(&day, now))
@@ -292,6 +294,22 @@ impl Elsewhere {
             COLUMN,
         );
         cx.notify();
+    }
+
+    /// Ctrl+←/→ on the focused grid moves the cursor's city a column over,
+    /// as Ctrl+↑/↓ does a row, and the cursor goes with it. Here's own column
+    /// is no saved city, so it stays.
+    fn shift_column(&mut self, left: bool, cx: &mut Context<Self>) {
+        let now = self.shown();
+        let day = hours::Day::of(&now);
+        let columns = self.grid_columns(&self.order());
+        let (column, _) = self.cell(columns.len(), &day, &now);
+        let Some(geonameid) = columns.get(column).and_then(|column| column.geonameid) else {
+            return;
+        };
+        if self.swap_saved(geonameid, left, cx).is_some() {
+            self.move_cell(if left { -1 } else { 1 }, 0, cx);
+        }
     }
 
     /// Enter on the focused grid pins the cell's time, as a click does.
@@ -501,11 +519,17 @@ impl Elsewhere {
             })
             .tooltip(Tooltip::text(tip))
             // The grid's only what-if: no editor, just the label's time.
+            // The keyboard cursor comes along, so Tab into the grid picks up
+            // at the clicked cell rather than here's column.
             .on_click(cx.listener(move |this, _event, _window, cx| {
                 this.pinned = Some(Pin {
                     anchor,
                     at: instant.clone(),
                 });
+                let columns = this.grid_columns(&this.order());
+                if let Some(column) = columns.iter().position(|c| c.geonameid == anchor) {
+                    this.grid_cursor = Some((column, i));
+                }
                 cx.notify();
             }))
     }

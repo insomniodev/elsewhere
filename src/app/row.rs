@@ -143,25 +143,35 @@ impl Elsewhere {
     /// Ctrl+↑/↓ on a focused row: the keyboard's drag, so in the hand order
     /// only.
     fn shift(&mut self, geonameid: u32, up: bool, cx: &mut Context<Self>) {
-        if self.by_clock {
-            return;
-        }
-        let Some(at) = self.saved.iter().position(|id| *id == geonameid) else {
+        let Some(to) = self.swap_saved(geonameid, up, cx) else {
             return;
         };
-        let to = if up {
-            at.checked_sub(1)
-        } else {
-            Some(at + 1).filter(|to| *to < self.saved.len())
-        };
-        let Some(to) = to else {
-            return;
-        };
-        self.saved.swap(at, to);
-        self.persist(cx);
         self.saved_scroll
             .scroll_to_item(to + usize::from(self.here.city.is_none()));
         cx.notify();
+    }
+
+    /// Swaps a saved city with its neighbour, earlier or later in the hand
+    /// order, and persists it. The keyboard's drag, so a no-op by clock or
+    /// at either end; otherwise its new index.
+    pub(super) fn swap_saved(
+        &mut self,
+        geonameid: u32,
+        earlier: bool,
+        cx: &mut Context<Self>,
+    ) -> Option<usize> {
+        if self.by_clock {
+            return None;
+        }
+        let at = self.saved.iter().position(|id| *id == geonameid)?;
+        let to = if earlier {
+            at.checked_sub(1)?
+        } else {
+            Some(at + 1).filter(|to| *to < self.saved.len())?
+        };
+        self.saved.swap(at, to);
+        self.persist(cx);
+        Some(to)
     }
 
     /// Scrolls the list to the row on its next frame and washes it briefly,

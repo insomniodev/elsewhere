@@ -50,7 +50,12 @@ actions!(pin_editor, [Commit, Cancel]);
 actions!(row, [Edit, Remove, MoveUp, MoveDown]);
 
 // On the focused grid, whose arrows move a cell cursor.
-actions!(grid, [CellLeft, CellRight, CellUp, CellDown, PinCell]);
+actions!(
+    grid,
+    [
+        CellLeft, CellRight, CellUp, CellDown, PinCell, MoveLeft, MoveRight
+    ]
+);
 
 // Window-wide. The search picker lets escape through only when it has
 // nothing of its own to clear.

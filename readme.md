@@ -43,6 +43,7 @@ macOS builds are not published yet, as they are untested.
 | `Delete` | Remove the focused city |
 | `Ctrl+↑` / `Ctrl+↓` | Move the focused city up / down the list |
 | `←` `→` `↑` `↓` / `Enter` | Move through / pick an hour in the grid |
+| `Ctrl+←` / `Ctrl+→` | Move the grid cursor's city left / right |
 | `Ctrl+1` / `2` / `3` | Show the list / map / grid |
 | `Ctrl+W` / `Ctrl+Q` | Close the window / quit |
 

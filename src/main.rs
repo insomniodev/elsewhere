@@ -114,6 +114,8 @@ fn main() {
                 KeyBinding::new("up", app::CellUp, Some("Grid")),
                 KeyBinding::new("down", app::CellDown, Some("Grid")),
                 KeyBinding::new("enter", app::PinCell, Some("Grid")),
+                KeyBinding::new("ctrl-left", app::MoveLeft, Some("Grid")),
+                KeyBinding::new("ctrl-right", app::MoveRight, Some("Grid")),
             ]);
             // Whatever closes the one window, the compositor included, ends
             // the app with it.
