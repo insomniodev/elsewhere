@@ -183,6 +183,21 @@ impl Elsewhere {
         }
     }
 
+    /// A click takes focus off a stop the keyboard left it on, so its ring
+    /// goes: back to search, or to the open page. Inputs keep theirs.
+    pub(super) fn release_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(focused) = window.focused(cx) else {
+            return;
+        };
+        let rest = match self.page {
+            Some(_) => self.focus.page.clone(),
+            None => self.picker.focus_handle(cx),
+        };
+        if focused != rest && self.focus.stops.iter().any(|(handle, _)| *handle == focused) {
+            window.focus(&rest, cx);
+        }
+    }
+
     fn editor_focused(&self, window: &Window, cx: &App) -> bool {
         self.editing
             .as_ref()

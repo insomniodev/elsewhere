@@ -566,6 +566,10 @@ impl Render for Elsewhere {
         let system_frame = titlebar::system_frame(window);
         div()
             .key_context("Elsewhere")
+            // Before the press lands, so what it opens takes focus from here.
+            .capture_any_mouse_down(
+                cx.listener(|this, _, window, cx| this.release_focus(window, cx)),
+            )
             // Esc leaves a page before it unpins.
             .on_action(cx.listener(|this, _: &Unpin, window, cx| {
                 if this.page.is_some() {
