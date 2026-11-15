@@ -37,17 +37,17 @@ pub(super) fn tag(text: impl Into<SharedString>) -> Div {
     div()
         .flex_none()
         .text_xs()
-        .text_color(rgb(theme::OVERLAY2))
+        .text_color(rgb(theme::TEXT_FAINT))
         .child(text.into())
 }
 
 /// Shown by every view while nothing is saved. The list sets it in a row's
 /// place; the others lay it over their content with `hint_over`.
 pub(super) fn hint() -> Div {
-    div().text_color(rgb(theme::OVERLAY2)).child(HINT)
+    div().text_color(rgb(theme::TEXT_FAINT)).child(HINT)
 }
 
-/// `hint` centred in whatever absolute box the caller gives it, on a `BASE`
+/// `hint` centred in whatever absolute box the caller gives it, on a `BG`
 /// pill so it stays legible over the map's land and night.
 pub(super) fn hint_over(area: Div) -> Div {
     area.absolute()
@@ -61,7 +61,7 @@ pub(super) fn hint_over(area: Div) -> Div {
                 .px_2()
                 .py_1()
                 .rounded_md()
-                .bg(rgb(theme::BASE)),
+                .bg(rgb(theme::BG)),
         )
 }
 

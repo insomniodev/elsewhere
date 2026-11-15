@@ -65,9 +65,9 @@ impl Button {
             id: id.into(),
             group: id,
             face,
-            rest: theme::OVERLAY2,
+            rest: theme::TEXT_FAINT,
             hover: None,
-            wash: rgb(theme::SURFACE0),
+            wash: rgb(theme::SURFACE),
             on: false,
             current: false,
             disabled: false,
@@ -199,7 +199,7 @@ impl Button {
             // Always drawn, so a focus ring has room.
             .border_1()
             .border_color(transparent_black())
-            .when(current, |button| button.bg(rgb(theme::SURFACE0)))
+            .when(current, |button| button.bg(rgb(theme::SURFACE)))
             .when(live && click.is_some(), |button| button.cursor_pointer())
             .when(live && (click.is_some() || area.is_some()), |button| {
                 button.hover(|style| style.bg(wash))

@@ -237,7 +237,7 @@ impl Elsewhere {
                     .rounded_full()
                     .bg(rgb(theme::BLUE))
                     .when(marker.home, |dot| {
-                        dot.bg(rgb(theme::BASE))
+                        dot.bg(rgb(theme::BG))
                             .border(px(1.5))
                             .border_color(rgb(theme::BLUE))
                     })
@@ -336,7 +336,7 @@ impl Elsewhere {
                             cx.stop_propagation()
                         })
                         .rounded_sm()
-                        .hover(|style| style.bg(rgb(theme::SURFACE0)))
+                        .hover(|style| style.bg(rgb(theme::SURFACE)))
                         .on_click(cx.listener(move |this, _event, window, cx| {
                             this.edit(geonameid, time.clone(), window, cx)
                         }))
@@ -380,7 +380,7 @@ impl Elsewhere {
             .px(px(CHIP_PAD_X))
             .py(px(CHIP_PAD_Y))
             .border_1()
-            .border_color(rgb(theme::SURFACE1))
+            .border_color(rgb(theme::SURFACE_STRONG))
             .rounded_sm()
             .bg(rgba(theme::CHIP))
             .whitespace_nowrap()
@@ -400,7 +400,7 @@ impl Elsewhere {
                     .truncate()
                     .text_size(name_size())
                     .line_height(px(NAME_LINE))
-                    .text_color(rgb(theme::SUBTEXT0))
+                    .text_color(rgb(theme::TEXT_MUTED))
                     .tooltip(Tooltip::text(marker.tip.clone()))
                     .child(marker.name.clone()),
             )
@@ -441,7 +441,7 @@ fn render_leaders(leaders: Vec<(Point<Pixels>, Point<Pixels>)>) -> AnyElement {
             }
             // A path lyon cannot tessellate is only the lines missing.
             if let Ok(path) = builder.build() {
-                window.paint_path(path, rgb(theme::OVERLAY2));
+                window.paint_path(path, rgb(theme::TEXT_FAINT));
             }
         },
     )

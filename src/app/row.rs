@@ -317,7 +317,7 @@ impl Elsewhere {
                         .right_0()
                         .px_1()
                         .rounded_sm()
-                        .bg(rgb(theme::BASE))
+                        .bg(rgb(theme::BG))
                         .whitespace_nowrap()
                         .text_xs()
                         .text_color(rgb(theme::RED))
@@ -399,7 +399,7 @@ impl Elsewhere {
                     .id(id)
                     .min_w_0()
                     .truncate()
-                    .text_color(rgb(theme::SUBTEXT0))
+                    .text_color(rgb(theme::TEXT_MUTED))
                     .tooltip(Tooltip::text(detail))
                     .child(name),
             )
@@ -436,7 +436,7 @@ impl Elsewhere {
         // The first row wears it transparent, so a drop before it has a line
         // to show. No inset at the list's ends, with nothing to space from.
         let target = drop_target(div(), !self.by_clock)
-            .when(!first, |row| row.border_color(rgb(theme::SURFACE0)))
+            .when(!first, |row| row.border_color(rgb(theme::SURFACE)))
             .py(GAP)
             .when(first, |row| row.pt_0())
             .when(last, |row| row.pb_0())
@@ -554,7 +554,7 @@ impl Elsewhere {
                                             )
                                             .when(known, |cell| {
                                                 cell.cursor_pointer()
-                                                    .hover(|style| style.bg(rgb(theme::SURFACE0)))
+                                                    .hover(|style| style.bg(rgb(theme::SURFACE)))
                                                     .on_click(cx.listener({
                                                         let time = time.clone();
                                                         move |this, _event, window, cx| {
@@ -600,7 +600,7 @@ impl Elsewhere {
             .child(
                 Button::new("remove", "icons/x.svg", px(12.))
                     .key(geonameid as usize)
-                    .rest(theme::SUBTEXT0)
+                    .rest(theme::TEXT_MUTED)
                     .hover(theme::RED)
                     .tooltip(Tooltip::text("remove"))
                     .on_click(cx.listener(move |this, _event, window, cx| {
@@ -632,7 +632,7 @@ impl Elsewhere {
     ) -> Stateful<Div> {
         Button::new("remove", "icons/x.svg", px(8.))
             .key(geonameid as usize)
-            .rest(theme::SUBTEXT0)
+            .rest(theme::TEXT_MUTED)
             .hover(theme::RED)
             .tooltip(Tooltip::text("remove"))
             .on_click(

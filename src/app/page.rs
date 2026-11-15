@@ -92,7 +92,7 @@ impl Elsewhere {
                                 .size(px(16.))
                                 // The glyph starts a few pixels into its box.
                                 .ml(px(-3.))
-                                .text_color(rgb(theme::OVERLAY2)),
+                                .text_color(rgb(theme::TEXT_FAINT)),
                         )
                         .child(div().text_sm().child("go back")),
                 ),
@@ -155,14 +155,14 @@ impl Elsewhere {
                                 .child(
                                     div()
                                         .text_xs()
-                                        .text_color(rgb(theme::OVERLAY2))
+                                        .text_color(rgb(theme::TEXT_FAINT))
                                         .child(format!("version {version}")),
                                 ),
                         )
                         .child(
                             div()
                                 .text_sm()
-                                .text_color(rgb(theme::SUBTEXT0))
+                                .text_color(rgb(theme::TEXT_MUTED))
                                 .child(env!("CARGO_PKG_DESCRIPTION").to_lowercase()),
                         ),
                 )
@@ -181,7 +181,7 @@ impl Elsewhere {
                         .flex_col()
                         .gap_2()
                         .text_xs()
-                        .text_color(rgb(theme::SUBTEXT0))
+                        .text_color(rgb(theme::TEXT_MUTED))
                         .children(paragraphs(LICENSE).map(|p| div().child(p))),
                 )
                 .child(link(
@@ -195,7 +195,7 @@ impl Elsewhere {
         let mut page = div().flex().flex_col().gap_4().pb_2();
         for (i, group) in groups.enumerate() {
             if i > 0 {
-                page = page.child(div().h(px(1.)).bg(rgb(theme::SURFACE0)));
+                page = page.child(div().h(px(1.)).bg(rgb(theme::SURFACE)));
             }
             page = page.child(group);
         }
@@ -231,7 +231,7 @@ impl Elsewhere {
                     .child(
                         div()
                             .text_xs()
-                            .text_color(rgb(theme::OVERLAY2))
+                            .text_color(rgb(theme::TEXT_FAINT))
                             .child(detail),
                     ),
             )
@@ -251,7 +251,7 @@ fn framed(element: Stateful<Div>) -> Stateful<Div> {
             .border_color(transparent_black())
             .focus(|style| style.border_color(rgb(theme::BLUE)))
             .cursor_pointer()
-            .hover(|style| style.bg(rgb(theme::SURFACE0))),
+            .hover(|style| style.bg(rgb(theme::SURFACE))),
     )
 }
 
@@ -261,7 +261,7 @@ fn section(title: &'static str) -> Div {
         div()
             .px_2()
             .text_xs()
-            .text_color(rgb(theme::OVERLAY2))
+            .text_color(rgb(theme::TEXT_FAINT))
             .child(title),
     )
 }
@@ -276,12 +276,16 @@ fn switch(on: bool) -> impl IntoElement {
         .h(px(16.))
         .p(px(2.))
         .rounded_full()
-        .bg(rgb(if on { theme::BLUE } else { theme::SURFACE1 }))
+        .bg(rgb(if on {
+            theme::BLUE
+        } else {
+            theme::SURFACE_STRONG
+        }))
         .when(on, |track| track.justify_end())
         .child(div().size(px(12.)).rounded_full().bg(rgb(if on {
-            theme::BASE
+            theme::BG
         } else {
-            theme::OVERLAY2
+            theme::TEXT_FAINT
         })))
 }
 

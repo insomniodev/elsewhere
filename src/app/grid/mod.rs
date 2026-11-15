@@ -272,7 +272,7 @@ impl Elsewhere {
         let color = self
             .pinned
             .as_ref()
-            .map_or(theme::SUBTEXT0, |pin| pin.accent().text);
+            .map_or(theme::TEXT_MUTED, |pin| pin.accent().text);
         div()
             .absolute()
             .top_0()
@@ -346,7 +346,7 @@ impl Elsewhere {
             .min_w(COLUMN)
             .pb(ROW / 2.)
             .border_r_1()
-            .border_color(rgb(theme::SURFACE0))
+            .border_color(rgb(theme::SURFACE))
             .flex()
             .flex_col()
             .children((0..day.rows()).map(|i| {
@@ -386,7 +386,7 @@ impl Elsewhere {
             .gap(TAG_GAP)
             .pl(INSET)
             .text_size(LABEL)
-            .text_color(rgb(theme::OVERLAY2))
+            .text_color(rgb(theme::TEXT_FAINT))
             .when(column.cursor == Some(i), |slot| slot.child(ring()));
         let Some(zone) = &column.zone else {
             return slot;
@@ -409,13 +409,13 @@ impl Elsewhere {
                     .left_0()
                     .right_0()
                     .h(RULE)
-                    .bg(rgb(theme::SURFACE1))
+                    .bg(rgb(theme::SURFACE_STRONG))
                     .child(
                         div()
                             .absolute()
                             .top(RULE)
                             .left(INSET)
-                            .text_color(rgb(theme::SUBTEXT0))
+                            .text_color(rgb(theme::TEXT_MUTED))
                             .line_height(DAY_LINE)
                             .child(clock::day_label(date)),
                     )
@@ -446,7 +446,7 @@ impl Elsewhere {
         };
         slot.cursor_pointer()
             .when(shown.is_none(), |slot| {
-                slot.hover(|style| style.text_color(rgb(theme::SUBTEXT0)))
+                slot.hover(|style| style.text_color(rgb(theme::TEXT_MUTED)))
             })
             .tooltip(Tooltip::text(tip))
             // The grid's only what-if: no editor, just the label's time.
@@ -471,7 +471,7 @@ impl Elsewhere {
             .rounded_md()
             .map(|bar| match &self.pinned {
                 Some(pin) => bar.bg(rgba(pin.accent().tint)),
-                None => bar.bg(rgb(theme::SURFACE0)),
+                None => bar.bg(rgb(theme::SURFACE)),
             })
     }
 

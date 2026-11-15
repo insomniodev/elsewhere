@@ -125,9 +125,9 @@ impl Pin {
                 edge: theme::YELLOW_EDGE,
             },
             None => Accent {
-                text: theme::MAUVE,
-                tint: theme::MAUVE_TINT,
-                edge: theme::MAUVE_EDGE,
+                text: theme::PURPLE,
+                tint: theme::PURPLE_TINT,
+                edge: theme::PURPLE_EDGE,
             },
         }
     }
@@ -578,7 +578,7 @@ impl Render for Elsewhere {
             .gap(GAP)
             .px_4()
             .pb(PAD_BOTTOM)
-            .bg(rgb(theme::BASE))
+            .bg(rgb(theme::BG))
             .text_color(rgb(theme::TEXT))
             // The title bar sits in what would be the top padding.
             .map(|root| {

@@ -145,7 +145,7 @@ impl Elsewhere {
                     .flex()
                     .items_center()
                     .text_xs()
-                    .text_color(rgb(theme::OVERLAY2))
+                    .text_color(rgb(theme::TEXT_FAINT))
                     .child("elsewhere")
                     .map(|strip| match Chrome::CURRENT {
                         // Windows has no move on request; the strip is its

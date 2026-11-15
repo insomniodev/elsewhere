@@ -95,7 +95,7 @@ impl Elsewhere {
             Button::label("notice-action", label.clone())
                 .focus(self.focus.notice_action.clone())
                 .rest(theme::TEXT)
-                .wash(rgb(theme::SURFACE1))
+                .wash(rgb(theme::SURFACE_STRONG))
                 .on_click(cx.listener(move |this, _event, window, cx| {
                     this.dismiss_notice(cx);
                     run(this, window, cx);
@@ -113,7 +113,7 @@ impl Elsewhere {
                 .pl_2()
                 .pr_0p5()
                 .rounded_md()
-                .bg(rgb(theme::SURFACE0))
+                .bg(rgb(theme::SURFACE))
                 // A stripe rather than a frame: enough to tell a failure
                 // without shouting over the list.
                 .when(failure, |bar| {
@@ -128,7 +128,7 @@ impl Elsewhere {
                         .text_color(rgb(if failure {
                             theme::TEXT
                         } else {
-                            theme::SUBTEXT0
+                            theme::TEXT_MUTED
                         }))
                         .child(notice.text.clone()),
                 )
@@ -136,9 +136,9 @@ impl Elsewhere {
                 .child(
                     Button::new("notice-dismiss", "icons/x.svg", px(12.))
                         .focus(self.focus.notice_dismiss.clone())
-                        .rest(theme::SUBTEXT0)
+                        .rest(theme::TEXT_MUTED)
                         .hover(theme::TEXT)
-                        .wash(rgb(theme::SURFACE1))
+                        .wash(rgb(theme::SURFACE_STRONG))
                         .tooltip(Tooltip::text("dismiss"))
                         .on_click(cx.listener(|this, _event, _window, cx| this.dismiss_notice(cx)))
                         .build(),

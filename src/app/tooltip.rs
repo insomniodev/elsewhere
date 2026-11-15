@@ -46,10 +46,10 @@ impl Render for Tooltip {
             .py_0p5()
             .rounded_md()
             .border_1()
-            .border_color(rgb(theme::SURFACE1))
-            .bg(rgb(theme::MANTLE))
+            .border_color(rgb(theme::SURFACE_STRONG))
+            .bg(rgb(theme::PANEL))
             .text_xs()
-            .text_color(rgb(theme::SUBTEXT0))
+            .text_color(rgb(theme::TEXT_MUTED))
             .child((self.text)(cx))
     }
 }

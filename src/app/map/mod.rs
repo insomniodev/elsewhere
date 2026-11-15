@@ -272,7 +272,7 @@ impl Elsewhere {
 
                 for ring in land.iter() {
                     if let Some(path) = polygon(ring.iter().copied().map(at)) {
-                        window.paint_path(path, rgb(theme::SURFACE0));
+                        window.paint_path(path, rgb(theme::SURFACE));
                     }
                 }
 
@@ -291,7 +291,7 @@ impl Elsewhere {
                     let x = at(LonLat { lon, lat: 0.0 }).x;
                     window.paint_quad(fill(
                         Bounds::new(point(x - px(0.5), rect.bottom() - TICK), size(px(1.), TICK)),
-                        rgb(theme::SURFACE1),
+                        rgb(theme::SURFACE_STRONG),
                     ));
                     lon += MERIDIAN_STEP;
                 }
@@ -305,7 +305,7 @@ impl Elsewhere {
                         let run = TextRun {
                             len: text.len(),
                             font: font.clone(),
-                            color: rgb(theme::OVERLAY2).into(),
+                            color: rgb(theme::TEXT_FAINT).into(),
                             background_color: None,
                             underline: None,
                             strikethrough: None,

@@ -212,7 +212,7 @@ impl Elsewhere {
             .flex()
             .flex_row()
             .rounded_md()
-            .bg(rgb(theme::MANTLE))
+            .bg(rgb(theme::PANEL))
             .children(VIEWS.iter().zip(&self.focus.views).map(|(segment, focus)| {
                 let Segment {
                     view,
@@ -281,10 +281,10 @@ impl Elsewhere {
                 .px_2()
                 .rounded_md()
                 .border_1()
-                .border_color(rgb(theme::MANTLE))
-                .bg(rgb(theme::MANTLE))
+                .border_color(rgb(theme::PANEL))
+                .bg(rgb(theme::PANEL))
                 .text_xs()
-                .text_color(rgb(theme::OVERLAY2))
+                .text_color(rgb(theme::TEXT_FAINT))
                 .child(div().min_w_0().truncate().child(hint)),
         )
     }
@@ -358,7 +358,7 @@ impl Elsewhere {
                                     live.style().flex_shrink = Some(1000.);
                                     live
                                 })
-                                .text_color(rgb(theme::SUBTEXT0))
+                                .text_color(rgb(theme::TEXT_MUTED))
                                 .child(format!("· now {live}")),
                         ),
                 )
@@ -382,14 +382,14 @@ impl Elsewhere {
                                     .border_color(transparent_black())
                                     .focus(|style| style.border_color(rgb(theme::BLUE)))
                                     .cursor_pointer()
-                                    .hover(|style| style.bg(rgb(theme::SURFACE0))),
+                                    .hover(|style| style.bg(rgb(theme::SURFACE))),
                             )
                             .on_click(
                                 cx.listener(|this, _event, window, cx| this.unpin(window, cx)),
                             )
                             .child("back to now"),
                         )
-                        .child(div().text_color(rgb(theme::OVERLAY2)).child(keys)),
+                        .child(div().text_color(rgb(theme::TEXT_FAINT)).child(keys)),
                 ),
         )
     }

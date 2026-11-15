@@ -175,7 +175,7 @@ impl RenderOnce for Scrollbar {
                 };
                 if shown {
                     let strength = if dragging || over_thumb { ACTIVE } else { REST };
-                    let color = Hsla::from(rgb(theme::OVERLAY2)).opacity(strength * opacity);
+                    let color = Hsla::from(rgb(theme::TEXT_FAINT)).opacity(strength * opacity);
                     window.paint_quad(
                         fill(thumb_bounds(thickness), color).corner_radii(thickness / 2.),
                     );
