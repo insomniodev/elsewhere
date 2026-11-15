@@ -4,6 +4,8 @@ Check the time in other places.
 <p>
   <img src="docs/map.png" alt="The map view, with cities pinned and the night side shaded" width="536">
   <img src="docs/list.png" alt="The list view" width="282">
+  <br>
+  <img src="docs/grid.png" alt="The grid view, with each city's hours side by side" width="536">
 </p>
 
 ## Install
