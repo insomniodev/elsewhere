@@ -2,8 +2,8 @@
 Check the time in other places.
 
 <p>
-  <img src="docs/map.png" alt="The map view, with cities pinned and the night side shaded" width="600">
-  <img src="docs/list.png" alt="The list view" width="220">
+  <img src="docs/map.png" alt="The map view, with cities pinned and the night side shaded" width="536">
+  <img src="docs/list.png" alt="The list view" width="282">
 </p>
 
 ## Install
