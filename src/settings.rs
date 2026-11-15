@@ -7,6 +7,7 @@ use gpui::{Pixels, Point, Size, point, px, size};
 use crate::app::View;
 use crate::clock::Format;
 use crate::saved;
+use crate::theme::Mode;
 
 const HEADER: &str = "# elsewhere settings, one key = value per line";
 
@@ -16,6 +17,7 @@ pub struct Settings {
     /// Ordered by UTC offset rather than by hand.
     pub by_clock: bool,
     pub format: Format,
+    pub theme: Mode,
     /// The desktop's title bar and frame rather than the app's. Linux only.
     pub system_frame: bool,
     /// The windowed size, kept while maximized.
@@ -59,6 +61,12 @@ fn parse(text: &str) -> Settings {
                 "12" => settings.format = Format::Twelve,
                 _ => {}
             },
+            "theme" => match value {
+                "system" => settings.theme = Mode::System,
+                "light" => settings.theme = Mode::Light,
+                "dark" => settings.theme = Mode::Dark,
+                _ => {}
+            },
             "decorations" => match value {
                 "app" => settings.system_frame = false,
                 "system" => settings.system_frame = true,
@@ -92,6 +100,11 @@ fn render(settings: &Settings) -> String {
         Format::TwentyFour => "24",
         Format::Twelve => "12",
     };
+    let theme = match settings.theme {
+        Mode::System => "system",
+        Mode::Light => "light",
+        Mode::Dark => "dark",
+    };
     let decorations = if settings.system_frame {
         "system"
     } else {
@@ -99,7 +112,7 @@ fn render(settings: &Settings) -> String {
     };
     let mut out = format!(
         "{HEADER}\nview = {view}\norder = {order}\nformat = {format}\n\
-         decorations = {decorations}\n"
+         theme = {theme}\ndecorations = {decorations}\n"
     );
     if let Some(size) = settings.size {
         let (width, height) = (
@@ -140,14 +153,15 @@ mod tests {
 
     #[test]
     fn parses_every_key() {
-        let text = "view = grid\norder = clock\nformat = 12\ndecorations = system\n\
-                    width = 472\nheight = 590\nx = -1200\ny = 40\n";
+        let text = "view = grid\norder = clock\nformat = 12\ntheme = light\n\
+                    decorations = system\nwidth = 472\nheight = 590\nx = -1200\ny = 40\n";
         assert_eq!(
             parse(text),
             Settings {
                 view: View::Grid,
                 by_clock: true,
                 format: Format::Twelve,
+                theme: Mode::Light,
                 system_frame: true,
                 size: Some(size(px(472.), px(590.))),
                 origin: Some(point(px(-1200.), px(40.))),
@@ -190,6 +204,7 @@ mod tests {
             view: View::Map,
             by_clock: true,
             format: Format::Twelve,
+            theme: Mode::Dark,
             system_frame: true,
             size: Some(size(px(472.), px(590.))),
             origin: Some(point(px(100.), px(-20.))),

@@ -33,7 +33,7 @@ use crate::land;
 use crate::saved;
 use crate::search::SearchIndex;
 use crate::settings::{self, Settings};
-use crate::theme;
+use crate::theme::{self, Mode};
 use crate::zones;
 use focus::Focus;
 use notice::{Kind, Notice};
@@ -150,7 +150,9 @@ pub struct Elsewhere {
     /// Restarted by each move or resize; dropping it cancels the write.
     settings_settle: Option<Task<()>>,
     _bounds: Subscription,
-    /// Follows the system's light or dark preference as it changes.
+    /// The palette picked in settings, or the desktop's.
+    theme: Mode,
+    /// Follows the desktop's light or dark preference as it changes.
     _appearance: Subscription,
     notice: Option<Notice>,
     /// Dropping it keeps the notice up.
@@ -252,9 +254,10 @@ impl Elsewhere {
 
         // Before the first frame. On Linux the desktop portal may answer only
         // after the window opens; the observer then switches.
-        theme::follow(window.appearance());
-        let appearance = cx.observe_window_appearance(window, |_, window, _| {
-            theme::follow(window.appearance());
+        cx.set_window_appearance(settings.theme.appearance());
+        theme::show(settings.theme, window.appearance());
+        let appearance = cx.observe_window_appearance(window, |this, window, _| {
+            theme::show(this.theme, window.appearance());
             // The palette is read while rendering, so every view redraws.
             window.refresh();
         });
@@ -282,6 +285,7 @@ impl Elsewhere {
             by_clock: settings.by_clock,
             format: settings.format,
             system_frame: settings.system_frame,
+            theme: settings.theme,
             page: None,
             page_scroll: ScrollHandle::new(),
             settings_written: settings,
@@ -353,6 +357,7 @@ impl Elsewhere {
             view: self.view,
             by_clock: self.by_clock,
             format: self.format,
+            theme: self.theme,
             system_frame: self.system_frame,
             size: Some(bounds.size),
             origin: Some(bounds.origin),

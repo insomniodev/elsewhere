@@ -20,6 +20,8 @@ pub(super) struct Focus {
     /// The open page, which takes focus as it opens so nothing wears a ring.
     pub(super) page: FocusHandle,
     pub(super) back: FocusHandle,
+    /// The theme's segments, in `page::THEMES` order.
+    pub(super) themes: [FocusHandle; 3],
     pub(super) decorations: FocusHandle,
     pub(super) repository: FocusHandle,
     pub(super) third_party: FocusHandle,
@@ -51,6 +53,7 @@ impl Focus {
             settings: cx.focus_handle(),
             page: cx.focus_handle(),
             back: cx.focus_handle(),
+            themes: [cx.focus_handle(), cx.focus_handle(), cx.focus_handle()],
             decorations: cx.focus_handle(),
             repository: cx.focus_handle(),
             third_party: cx.focus_handle(),

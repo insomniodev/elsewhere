@@ -3,19 +3,27 @@
 
 use gpui::{
     AnyElement, Axis, Context, Div, FocusHandle, Focusable, ScrollHandle, SharedString, Stateful,
-    Window, WindowDecorations, div, prelude::*, px, rgb, svg, transparent_black,
+    Window, WindowDecorations, div, prelude::*, px, rgb, rgba, svg, transparent_black,
 };
 
 use super::Elsewhere;
+use super::button::Button;
 use super::focus::keyboard_only;
 use super::scrollbar::scrollbar;
 use super::titlebar;
-use crate::theme;
+use crate::theme::{self, Mode};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Page {
     Settings,
 }
+
+/// The theme's segments, left to right.
+const THEMES: [(Mode, &str); 3] = [
+    (Mode::System, "system"),
+    (Mode::Light, "light"),
+    (Mode::Dark, "dark"),
+];
 
 const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 const LICENSE: &str = include_str!("../../license.md");
@@ -41,6 +49,7 @@ impl Elsewhere {
     /// The page's stops, in the order they show.
     pub(super) fn page_stops(&self) -> Vec<FocusHandle> {
         let mut stops = vec![self.focus.page.clone(), self.focus.back.clone()];
+        stops.extend(self.focus.themes.iter().cloned());
         if titlebar::FRAME_CHOICE {
             stops.push(self.focus.decorations.clone());
         }
@@ -49,6 +58,15 @@ impl Elsewhere {
             self.focus.third_party.clone(),
         ]);
         stops
+    }
+
+    fn set_theme(&mut self, mode: Mode, window: &mut Window, cx: &mut Context<Self>) {
+        self.theme = mode;
+        cx.set_window_appearance(mode.appearance());
+        theme::show(mode, window.appearance());
+        // The palette is read while rendering, so every view redraws.
+        window.refresh();
+        self.persist_settings(window, cx);
     }
 
     fn toggle_frame(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -124,8 +142,7 @@ impl Elsewhere {
 
     fn render_settings(&self, cx: &mut Context<Self>) -> AnyElement {
         let version = env!("CARGO_PKG_VERSION");
-        // One group so far, so it goes without a heading.
-        let window = titlebar::FRAME_CHOICE.then(|| {
+        let frame = titlebar::FRAME_CHOICE.then(|| {
             self.render_switch_row(
                 "decorations",
                 "system title bar",
@@ -137,7 +154,11 @@ impl Elsewhere {
             )
             .into_any_element()
         });
-        let groups = window.into_iter().chain([
+        let groups = [
+            section("appearance")
+                .child(self.render_theme_row(cx))
+                .children(frame)
+                .into_any_element(),
             section("about")
                 .child(
                     div()
@@ -191,15 +212,66 @@ impl Elsewhere {
                     &self.focus.third_party,
                 ))
                 .into_any_element(),
-        ]);
+        ];
         let mut page = div().flex().flex_col().gap_4().pb_2();
-        for (i, group) in groups.enumerate() {
+        for (i, group) in groups.into_iter().enumerate() {
             if i > 0 {
                 page = page.child(div().h(px(1.)).bg(rgb(theme::palette().surface)));
             }
             page = page.child(group);
         }
         page.into_any_element()
+    }
+
+    /// Light, dark, or as the desktop is: segments like the view switch's.
+    fn render_theme_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        // The framed rows' inset, frame included, so the text lines up.
+        div()
+            .px(px(7.))
+            .border_1()
+            .border_color(transparent_black())
+            .flex()
+            .flex_row()
+            .items_center()
+            .justify_between()
+            .gap_3()
+            .py_1p5()
+            .child(
+                div()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .child(div().text_sm().child("theme"))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(rgb(theme::palette().text_faint))
+                            .child("light, dark, or as the desktop is"),
+                    ),
+            )
+            .child(
+                div()
+                    .flex_none()
+                    .flex()
+                    .flex_row()
+                    .rounded_md()
+                    .bg(rgb(theme::palette().panel))
+                    .text_sm()
+                    .children(THEMES.iter().zip(&self.focus.themes).enumerate().map(
+                        |(i, (&(mode, label), focus))| {
+                            Button::label("theme", label)
+                                .key(i)
+                                .focus(focus.clone())
+                                .on(self.theme == mode)
+                                .current(self.theme == mode)
+                                .wash(rgba(theme::palette().wash))
+                                .on_click(cx.listener(move |this, _event, window, cx| {
+                                    this.set_theme(mode, window, cx)
+                                }))
+                                .build()
+                        },
+                    )),
+            )
     }
 
     /// A setting that is on or off: the whole row flips it.

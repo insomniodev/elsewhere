@@ -110,6 +110,27 @@ pub(crate) const LIGHT: Palette = Palette {
     sun: 0xe0a020,
 };
 
+/// Which palette shows: the desktop's choice, or one picked in settings.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Mode {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl Mode {
+    /// What to force the window's own chrome to, where the platform draws
+    /// any; `None` leaves it to the desktop.
+    pub(crate) fn appearance(self) -> Option<WindowAppearance> {
+        match self {
+            Mode::System => None,
+            Mode::Light => Some(WindowAppearance::Light),
+            Mode::Dark => Some(WindowAppearance::Dark),
+        }
+    }
+}
+
 static LIGHT_ON: AtomicBool = AtomicBool::new(false);
 
 /// The palette showing. A process-wide switch rather than a gpui global, so
@@ -122,12 +143,39 @@ pub(crate) fn palette() -> &'static Palette {
     }
 }
 
-/// Shows the palette matching the system's light or dark preference. Takes
-/// effect on the next frame; the caller refreshes the window.
-pub(crate) fn follow(appearance: WindowAppearance) {
-    let light = matches!(
-        appearance,
-        WindowAppearance::Light | WindowAppearance::VibrantLight
-    );
-    LIGHT_ON.store(light, Ordering::Relaxed);
+/// Shows the palette `mode` asks for, with `system` the desktop's light or
+/// dark preference. Takes effect on the next frame; the caller refreshes the
+/// window.
+pub(crate) fn show(mode: Mode, system: WindowAppearance) {
+    LIGHT_ON.store(is_light(mode, system), Ordering::Relaxed);
+}
+
+fn is_light(mode: Mode, system: WindowAppearance) -> bool {
+    match mode {
+        Mode::System => matches!(
+            system,
+            WindowAppearance::Light | WindowAppearance::VibrantLight
+        ),
+        Mode::Light => true,
+        Mode::Dark => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn system_follows_the_desktop() {
+        assert!(is_light(Mode::System, WindowAppearance::Light));
+        assert!(is_light(Mode::System, WindowAppearance::VibrantLight));
+        assert!(!is_light(Mode::System, WindowAppearance::Dark));
+        assert!(!is_light(Mode::System, WindowAppearance::VibrantDark));
+    }
+
+    #[test]
+    fn a_pick_ignores_the_desktop() {
+        assert!(is_light(Mode::Light, WindowAppearance::Dark));
+        assert!(!is_light(Mode::Dark, WindowAppearance::Light));
+    }
 }
